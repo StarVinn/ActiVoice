@@ -1,9 +1,9 @@
 {
-  "czulosc_klasniecia": 60,
+  "czulosc_klasniecia": 70,
   "hotkey": "Win+Shift+W",
-  "zdarzenie_dzwiekowe": "Finger snapping",
+  "zdarzenie_dzwiekowe": "Clapping",
   "liczba_zdarzen": 2,
-  "cooldown": 3,
+  "cooldown": 0,
   "czulosc_nn": 0.11,
   "slowa_kluczowe": "Grace, Wake up",
   "jezyk_mowy": "en",
@@ -18,10 +18,10 @@
         {
           "nazwa": "Spotify",
           "exe": "C:\\Users\\GraceVinn\\AppData\\Roaming\\Spotify\\Spotify.exe",
-          "argumenty": "https://open.spotify.com/track/39shmbIHICJ2Wxnk1fPSdz?si=ebdbffd9c4d04863",
+          "argumenty": "spotify:playlist:6aJXYmUuEkTmt4tEtQM6WO",
           "ekran": 1,
           "polowa": "",
-          "warstwa": "Behind",
+          "warstwa": "Normal",
           "kolejnosc": 0,
           "minimalizuj": false
         },
@@ -29,7 +29,7 @@
           "nazwa": "Arc",
           "exe": "C:/Users/GraceVinn/AppData/Local/Microsoft/WindowsApps/Arc.exe",
           "argumenty": "",
-          "ekran": 1,
+          "ekran": 2,
           "polowa": "",
           "warstwa": "Normal",
           "kolejnosc": 0,
@@ -41,7 +41,7 @@
           "argumenty": "/c start whatsapp:",
           "ekran": 1,
           "polowa": "",
-          "warstwa": "Normal",
+          "warstwa": "Behind",
           "kolejnosc": 0,
           "minimalizuj": false
         }
