@@ -44,6 +44,16 @@
           "warstwa": "Behind",
           "kolejnosc": 0,
           "minimalizuj": false
+        },
+        {
+          "nazwa": "Visual Studio Code",
+          "exe": "cmd.exe",
+          "argumenty": "/c start \"\" \"%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe\" \"C:\\launcher\\launcher\"",
+          "ekran": 1,
+          "polowa": "",
+          "warstwa": "Normal",
+          "kolejnosc": 0,
+          "minimalizuj": false
         }
       ],
       "terminale": [],
