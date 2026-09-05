@@ -6,6 +6,14 @@ System tray: clap detection + hotkey -> launches workspace -> stays in tray.
 import ctypes, ctypes.wintypes, json, math, os, queue, re, shutil, subprocess, sys, time, threading
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np, sounddevice as sd
+try:
+    import pyautogui
+except ImportError:
+    pyautogui = None
+try:
+    import pygetwindow as gw
+except ImportError:
+    gw = None
 
 user32 = ctypes.windll.user32
 EnumWindowsProc = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
@@ -564,6 +572,84 @@ def launch_app(app):
     except Exception as e:
         log(name, f"ERROR: {e}")
 
+def launch_spotify_playlist(app):
+    """Open Spotify, focus its window, then confirm the playlist UI."""
+    name = app.get("nazwa", "Spotify")
+    playlist_uri = "spotify:playlist:6aJXYmUuEkTmt4tEtQM6WO"
+    log(name, f"start: cmd.exe /c start {playlist_uri}")
+    subprocess.Popen(f"cmd.exe /c start {playlist_uri}", shell=True)
+    if pyautogui is None:
+        log(name, "ERROR: pyautogui is not installed")
+        return
+
+    time.sleep(11)
+    try:
+        spotify_windows = pyautogui.getWindowsWithTitle("Spotify")
+    except Exception as e:
+        log(name, f"focus warning: {e}")
+        spotify_windows = []
+
+    if spotify_windows:
+        try:
+            spotify_window = spotify_windows[0]
+            spotify_window.activate()
+            time.sleep(1)
+            click_x = spotify_window.left + int(spotify_window.width * 0.3)
+            click_y = spotify_window.top + int(spotify_window.height * 0.4)
+            pyautogui.click(click_x, click_y)
+            time.sleep(0.5)
+        except Exception as e:
+            log(name, f"focus/click warning: {e}")
+    else:
+        log(name, "Spotify window not found; sending keys without focus")
+    pyautogui.press("tab")
+    pyautogui.press("enter")
+    log(name, "playlist loaded and confirmed")
+
+def launch_arc_browser(app):
+    """Launch Arc, wait for session restore, then move it to Screen 2."""
+    name = app.get("nazwa", "Arc")
+    launch_app(app)
+    time.sleep(2.5)
+    if pyautogui is None or gw is None:
+        log(name, "ERROR: pyautogui and pygetwindow are required")
+        return
+
+    try:
+        arc_windows = [window for window in gw.getWindowsWithTitle("Arc")
+                       if window.title]
+        if not arc_windows:
+            log(name, "Arc window not found")
+            return
+        arc_window = arc_windows[0]
+        arc_window.activate()
+        time.sleep(0.5)
+        pyautogui.hotkey("win", "shift", "right")
+        time.sleep(0.8)
+        arc_window.maximize()
+        pyautogui.hotkey("win", "up")
+        time.sleep(1.5)
+        center_x = arc_window.left + int(arc_window.width / 2)
+        center_y = arc_window.top + int(arc_window.height / 2)
+        pyautogui.click(center_x, center_y)
+        time.sleep(1.0)
+        pyautogui.hotkey("ctrl", "t")
+        time.sleep(1.0)
+        pyautogui.press("enter")
+        time.sleep(1.5)
+        log(name, "moved to Screen 2 and maximized")
+    except Exception as e:
+        log(name, f"move/focus ERROR: {e}")
+
+def _launch_configured_app(app):
+    app_name = app.get("nazwa", "").strip().lower()
+    if app_name == "spotify":
+        launch_spotify_playlist(app)
+    elif "arc" in app_name:
+        launch_arc_browser(app)
+    else:
+        launch_app(app)
+
 def _get_all_window_handles():
     """Get set of all current window handles."""
     handles = set()
@@ -678,13 +764,22 @@ def launch_profile(data):
         else:
             rest.append(a)
     for k in sorted(ordered.keys()):
-        for a in ordered[k]: launch_app(a)
+        for a in ordered[k]: _launch_configured_app(a)
 
     # Phase 2: launch remaining apps
     # Group by executable basename — same exe runs SEQUENTIALLY (prevents window cross-matching)
     # Different exes run in PARALLEL (fast startup)
     exe_groups = {}
+    spotify_apps = []
+    arc_apps = []
     for a in rest:
+        app_name = a.get("nazwa", "").strip().lower()
+        if app_name == "spotify":
+            spotify_apps.append(a)
+            continue
+        if "arc" in app_name:
+            arc_apps.append(a)
+            continue
         key = os.path.basename(a.get("exe", "") or "").lower()
         if not key:
             args = a.get("argumenty", "")
@@ -696,10 +791,16 @@ def launch_profile(data):
                 key = "_other_"
         exe_groups.setdefault(key, []).append(a)
 
+    # Spotify must complete before any other application starts.
+    for a in spotify_apps:
+        launch_spotify_playlist(a)
+    for a in arc_apps:
+        launch_arc_browser(a)
+
     def _launch_group(group_apps):
         """Launch a group of apps with same exe SEQUENTIALLY."""
         for a in group_apps:
-            launch_app(a)
+            _launch_configured_app(a)
 
     with ThreadPoolExecutor(max_workers=6) as pool:
         futs = [pool.submit(_launch_group, group) for group in exe_groups.values()]
@@ -708,6 +809,7 @@ def launch_profile(data):
             try: f.result()
             except Exception as e: print(f"  ! {e}", flush=True)
     print(f"\n{'='*40}\n  DONE! ({len(launched_pids)} processes)\n{'='*40}\n", flush=True)
+    os._exit(0)
 
 def close_workspace():
     closed = 0
@@ -1258,12 +1360,39 @@ def main():
         print("  Voice command: disabled", flush=True)
 
     tray = [None]
+    shutdown_lock = threading.Lock()
+    shutdown_complete = False
+
     def on_quit():
-        clap_state["running"] = False; stream.stop()
-        if voice_state: voice_state["running"] = False
-        if tray[0]: tray[0].stop()
+        nonlocal shutdown_complete
+        with shutdown_lock:
+            if shutdown_complete:
+                return
+            shutdown_complete = True
+
+        clap_state["running"] = False
+        if voice_state:
+            voice_state["running"] = False
+        try:
+            stream.stop()
+        except Exception as e:
+            print(f"  ! Audio shutdown warning: {e}", flush=True)
+        try:
+            stream.close()
+        except Exception as e:
+            print(f"  ! Audio close warning: {e}", flush=True)
+        if tray[0]:
+            try:
+                tray[0].stop()
+            except Exception as e:
+                print(f"  ! Tray shutdown warning: {e}", flush=True)
+
     tray[0] = create_tray(cfg, do_launch, do_close, do_config, on_quit)
     print("  Tray icon active.\n", flush=True)
-    tray[0].run()
+    try:
+        tray[0].run()
+    finally:
+        on_quit()
+    sys.exit(0)
 
 if __name__ == "__main__": main()

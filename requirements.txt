@@ -4,6 +4,8 @@ sounddevice
 pystray
 Pillow
 keyboard
+pyautogui
+pygetwindow
 
 # GUI (config_gui.py)
 customtkinter
