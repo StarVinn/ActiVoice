@@ -1,88 +1,71 @@
-Ready Vinn! Ini versi raw Markdown (.md) murni yang tinggal kamu *copy-paste* langsung ke file `README.md` kamu:
-
-```markdown
 # Activoice
 
 > **Smart Voice & Gesture Workspace Launcher for Windows**  
-> Buka seluruh lingkungan kerja, aplikasi, dan terminal secara otomatis ke monitor pilihan hanya lewat tepuk tangan, perintah suara, atau *shortcut*.
+> Buka seluruh lingkungan kerja, aplikasi, dan terminal secara otomatis ke monitor pilihan hanya lewat tepuk tangan, perintah suara, atau shortcut.
 
 ---
 
 ## Highlights
 
-* **Multi-Profile System** — Bikin berbagai profil workspace (misal: *Dev*, *Gaming*, *Streaming*) dan ganti profil secara fleksibel.
-* **Neural Sound Detection** — AI bawaan (PANNs CNN14) yang presisi buat ngenalin tepukan tangan, petikan jari, atau siulan tanpa kepemicu suara bising sekitar.
-* **Offline Voice Command** — Eksekusi perintah suara secara *offline* dan aman tanpa kirim data ke *cloud* (menggunakan Vosk).
-* **Window & Monitor Management** — Bebas atur posisi window aplikasi ke Monitor 1/2, *split screen* (kiri/kanan), hingga simulasi *shortcut* khusus (misal: Arc Browser di Screen 2, Spotify auto-play).
-* **Smart App Handling** — Otomatis nge-cek aplikasi yang udah kebuka biar nggak *double launch*, melainkan cuma mindahin fokus/layarnya.
-* **Clean Terminal Auto-Shutdown** — Terminal pembantu bakal otomatis *force exit* bersih begitu semua aplikasi selesai diluncurkan.
-
----
+- **Multi-Profile System** - Buat beberapa profil workspace seperti _Dev_, _Gaming_, atau _Streaming_, lalu ganti profil dengan fleksibel.
+- **Neural Sound Detection** - PANNs CNN14 mengenali tepukan tangan, petikan jari, siulan, dan suara pemicu lain.
+- **Offline Voice Command** - Jalankan perintah suara secara offline menggunakan Vosk tanpa mengirim audio ke cloud.
+- **Window & Monitor Management** - Atur posisi aplikasi ke monitor tertentu, split screen kiri/kanan, dan shortcut khusus untuk aplikasi seperti Arc Browser dan Spotify.
+- **Smart App Handling** - Periksa aplikasi yang sudah berjalan agar tidak selalu membuka instance baru dan dapat memosisikan ulang window.
+- **Clean Terminal Auto-Shutdown** - Proses launcher keluar setelah seluruh batch workspace selesai diluncurkan.
 
 ## Persyaratan Sistem
 
-* **OS:** Windows 10 / 11 (64-bit)
-* **Python:** 3.10 atau versi lebih baru
-* **Hardware:** Mikrofon aktif
-* **Dependensi Python Utama:** `pyautogui`, `pygetwindow`, `customtkinter`, `pyloudnorm` / `sounddevice`
+- **OS:** Windows 10/11 64-bit
+- **Python:** 3.10 atau lebih baru
+- **Hardware:** Mikrofon aktif untuk pemicu suara
+- **Dependensi:** Lihat [requirements.txt](requirements.txt)
 
----
+## Instalasi dan Penggunaan
 
-## Cara Instalasi & Cepat Pakai
+### Menjalankan dari Source Code
 
-### Mode 1: Menjalankan dari Source Code (Developer)
+1. Clone repository:
 
-1. **Clone repository:**
    ```bash
-   git clone [https://github.com/USERNAME/activoice.git](https://github.com/USERNAME/activoice.git)
-   cd activoice
+   git clone https://github.com/StarVinn/ActiVoice.git
+   cd ActiVoice
+   ```
 
-```
+2. Install dependensi:
 
-2. **Install dependensi:**
-```bash
-pip install -r requirements.txt
+   ```bash
+   python -m pip install -r requirements.txt
+   ```
 
-```
+3. Buka GUI konfigurasi:
 
+   ```bash
+   python config_gui.py
+   ```
 
-3. **Buka GUI Konfigurasi:**
-```bash
-python config_gui.py
+4. Jalankan launcher:
 
-```
+   ```bash
+   python workspace.py
+   ```
 
+### Membuat Executable
 
-4. **Jalankan Activoice Launcher:**
-```bash
-python workspace.py
+Jalankan `build.bat` untuk membuat executable standalone menggunakan PyInstaller:
 
-```
-
-
-
----
-
-### Mode 2: Compiled Executable (.exe)
-
-Gunakan `build.bat` untuk melakukan kompilasi otomatis ke format Standalone `.exe` via PyInstaller:
-
-```bash
+```bat
 build.bat
-
 ```
 
-Hasil kompilasi ada di dalam folder `dist/`:
+Output build berada di folder `dist/`:
 
-* `ActivoiceLauncher.exe` — Aplikasi utama (Tray & Sound/Voice Listener)
-* `ActivoiceConfig.exe` — GUI Editor Konfigurasi
-* `workspace-config.json` — File konfigurasi aktif
+- `WorkspaceLauncher.exe` - Launcher utama dengan tray, deteksi suara, dan voice trigger.
+- `workspace-config.json` - Konfigurasi aktif yang disalin di samping executable.
 
----
+## Struktur Konfigurasi
 
-## Struktur Konfigurasi (`workspace-config.json`)
-
-Contoh file konfigurasi `workspace-config.json`:
+Konfigurasi aktif berada di `workspace-config.json`. Gunakan [workspace-config.example.json](workspace-config.example.json) sebagai template:
 
 ```json
 {
@@ -119,50 +102,53 @@ Contoh file konfigurasi `workspace-config.json`:
           "kolejnosc": 1,
           "minimalizuj": false
         }
-      ]
+      ],
+      "terminale": []
     }
   }
 }
-
 ```
 
----
+Field penting untuk aplikasi:
+
+- `nazwa` - nama aplikasi dan identitas untuk handler khusus seperti Spotify atau Arc.
+- `exe` - executable atau command yang akan dijalankan.
+- `argumenty` - URL, URI, folder proyek, atau argumen aplikasi.
+- `ekran` - nomor monitor tujuan, mulai dari `1`.
+- `polowa` - `left`/`lewa` atau `right`/`prawa` untuk split screen.
+- `kolejnosc` - nilai lebih besar dari `0` diproses berurutan sebelum aplikasi lain.
 
 ## Metode Trigger
 
-| Metode | Pemicu Default | Keterangan |
-| --- | --- | --- |
-| **Double Clap** | Tepuk tangan 2x | Dideteksi jaringan saraf PANNs CNN14 |
-| **Hotkeys** | `Win + Shift + W` | Pintasan keyboard global |
-| **Voice Command** | `"launch"` / `"start work"` | Pengenalan suara *offline* via Vosk |
-| **System Tray** | Klik Kanan Icon Tray | Pilih & jalankan profil secara manual |
-
----
+| Metode        | Pemicu default               | Keterangan                                          |
+| ------------- | ---------------------------- | --------------------------------------------------- |
+| Double clap   | Tepuk tangan 2 kali          | Diverifikasi oleh PANNs CNN14.                      |
+| Hotkey        | `Win + Shift + W`            | Shortcut keyboard global.                           |
+| Voice command | `launch` atau keyword profil | Pengenalan suara offline melalui Vosk.              |
+| System tray   | Klik kanan ikon tray         | Jalankan profil atau tutup workspace secara manual. |
 
 ## Struktur Projek
 
 ```text
-activoice/
-├── workspace.py               # Main Service (Tray, AI Sound/Voice Listener, Automation Engine)
-├── config_gui.py              # GUI Editor (CustomTkinter)
-├── clap-trigger.py            # Standalone Clap Listener
-├── voice-trigger.py           # Standalone Voice Listener
-├── workspace-config.json      # File Konfigurasi Aktif
-├── workspace-config.example.json # Template Contoh Konfigurasi
-├── build.bat                  # Script Build Portable .exe
-└── requirements.txt           # Python Dependencies List
-
+ActiVoice/
+├── workspace.py                  # Launcher utama, tray, audio, voice, dan automation
+├── config_gui.py                 # GUI editor konfigurasi
+├── clap-trigger.py               # Listener tepukan standalone
+├── voice-trigger.py              # Listener suara standalone
+├── workspace-config.json         # Konfigurasi aktif
+├── workspace-config.example.json # Template konfigurasi
+├── build.bat                     # Script build executable
+├── requirements.txt              # Dependensi Python
+└── README.md                     # Dokumentasi proyek
 ```
----
 
-## Catatan Penggunaan & Eksplorasi Aplikasi
+## Catatan Penggunaan
 
-> **Tips:** Racikan logika *delay*, simulasi tombol, dan *window focus* di dalam skrip saat ini disesuaikan khusus untuk karakteristik aplikasi tertentu (seperti Spotify dan Arc Browser). 
-> 
-> Setiap aplikasi di Windows memiliki alur *startup*, penanganan *session restore*, serta respons terhadap shortcut keyboard yang berbeda-beda. Sangat disarankan untuk mengeksplorasi dan menyesuaikan variabel penjedaan (`time.sleep`) maupun urutan perintah keyboard sesuai dengan kebutuhan aplikasi lain yang ingin kamu tambahkan ke dalam profil Activoice.
+Handler Spotify dan Arc menggunakan jeda, aktivasi window, klik mouse, dan shortcut keyboard karena setiap aplikasi Windows memiliki waktu startup dan perilaku session restore yang berbeda. Sesuaikan nilai `time.sleep`, title window, dan urutan shortcut bila konfigurasi digunakan pada mesin atau aplikasi lain.
 
----
-## Watermark & Credits
+Launcher menggunakan `os._exit(0)` setelah seluruh batch launching selesai. Karena pemanggilan ini menghentikan proses Python secara langsung, gunakan konfigurasi dengan hati-hati jika launcher perlu tetap berjalan di system tray setelah aplikasi dibuka.
 
-* **Core Framework / System Creator:** [MateuszMlynekHub](https://github.com/MateuszMlynekHub)
-* **Upgraded & Customized By:** [StarVinn](https://github.com/StarVinn)
+## Credits
+
+- **Core Framework / System Creator:** [MateuszMlynekHub](https://github.com/MateuszMlynekHub)
+- **Upgraded & Customized By:** [StarVinn](https://github.com/StarVinn)
