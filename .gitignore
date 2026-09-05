@@ -3,6 +3,9 @@ dist/
 build/
 *.spec
 
+# Local configuration may contain usernames, private paths, keywords, and app IDs
+workspace-config.json
+
 # Python
 __pycache__/
 *.pyc
