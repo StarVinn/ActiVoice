@@ -37,8 +37,8 @@
         },
         {
           "nazwa": "Whats App Desktop",
-          "exe": "shell:AppsFolder\\5319275A.WhatsAppDesktop!App",
-          "argumenty": "",
+          "exe": "cmd.exe",
+          "argumenty": "/c start whatsapp:",
           "ekran": 1,
           "polowa": "",
           "warstwa": "Normal",

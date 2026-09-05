@@ -461,7 +461,10 @@ def _launch_process(exe, args_str, name):
     if already_running and args_str:
         log(name, f"already running, new instance with args")
         resolved, needs_shell = _resolve_exe(exe)
-        proc = subprocess.Popen([resolved] + args_str.split(), shell=needs_shell)
+        if exe.lower() == "cmd.exe":
+            proc = subprocess.Popen(f"cmd.exe {args_str}", shell=True)
+        else:
+            proc = subprocess.Popen([resolved] + args_str.split(), shell=needs_shell)
         _add_pid(proc.pid)
         return proc, True, eff_exe
 
@@ -477,7 +480,10 @@ def _launch_process(exe, args_str, name):
 
     log(name, f"start: {resolved}")
     if args_str:
-        proc = subprocess.Popen([resolved] + args_str.split(), shell=needs_shell)
+        if exe.lower() == "cmd.exe":
+            proc = subprocess.Popen(f"cmd.exe {args_str}", shell=True)
+        else:
+            proc = subprocess.Popen([resolved] + args_str.split(), shell=needs_shell)
     else:
         proc = subprocess.Popen([resolved], shell=needs_shell)
     _add_pid(proc.pid)
