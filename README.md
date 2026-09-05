@@ -1,133 +1,88 @@
-# Workspace Launcher
+Ready Vinn! Ini versi raw Markdown (.md) murni yang tinggal kamu *copy-paste* langsung ke file `README.md` kamu:
 
-Automatic work environment launcher for Windows. Launches configured apps, browsers and terminals, placing them on selected monitors — all with a single gesture.
+```markdown
+# Activoice
 
-**Launch methods:**
-- Double clap (sound detection with PANNs CNN14 neural network)
-- Voice command (offline speech recognition via Vosk)
-- Keyboard shortcut (e.g. `Win+Shift+W`)
-- System tray icon
+> **Smart Voice & Gesture Workspace Launcher for Windows**  
+> Buka seluruh lingkungan kerja, aplikasi, dan terminal secara otomatis ke monitor pilihan hanya lewat tepuk tangan, perintah suara, atau *shortcut*.
 
 ---
 
-## Features
+## Highlights
 
-- **Profiles** — prepare different app sets (e.g. "Work", "Home", "Project X") and switch between them
-- **Window positioning** — assign apps to specific monitors, screen halves (left/right) and layers (on top / behind)
-- **Smart launching** — detects already running apps and just repositions them instead of launching again
-- **Sound recognition** — PANNs CNN14 neural network classifies sounds (clapping, snapping, whistling, knocking and more)
-- **Voice command** — offline, no data sent to the cloud (Vosk model)
-- **UWP support** — automatically detects and launches Microsoft Store apps (Teams, Spotify etc.)
-- **Configuration GUI** — graphical editor for profiles, apps and settings (customtkinter)
-- **Autostart** — optional launch at Windows startup
+* **Multi-Profile System** — Bikin berbagai profil workspace (misal: *Dev*, *Gaming*, *Streaming*) dan ganti profil secara fleksibel.
+* **Neural Sound Detection** — AI bawaan (PANNs CNN14) yang presisi buat ngenalin tepukan tangan, petikan jari, atau siulan tanpa kepemicu suara bising sekitar.
+* **Offline Voice Command** — Eksekusi perintah suara secara *offline* dan aman tanpa kirim data ke *cloud* (menggunakan Vosk).
+* **Window & Monitor Management** — Bebas atur posisi window aplikasi ke Monitor 1/2, *split screen* (kiri/kanan), hingga simulasi *shortcut* khusus (misal: Arc Browser di Screen 2, Spotify auto-play).
+* **Smart App Handling** — Otomatis nge-cek aplikasi yang udah kebuka biar nggak *double launch*, melainkan cuma mindahin fokus/layarnya.
+* **Clean Terminal Auto-Shutdown** — Terminal pembantu bakal otomatis *force exit* bersih begitu semua aplikasi selesai diluncurkan.
 
 ---
 
-## Requirements
+## Persyaratan Sistem
 
-- **Windows 10/11**
-- **Python 3.10+** (to run from source)
-- **Microphone** (for clap detection and voice commands)
-- Optionally: **Git Bash**, **AutoHotkey v2**
+* **OS:** Windows 10 / 11 (64-bit)
+* **Python:** 3.10 atau versi lebih baru
+* **Hardware:** Mikrofon aktif
+* **Dependensi Python Utama:** `pyautogui`, `pygetwindow`, `customtkinter`, `pyloudnorm` / `sounddevice`
 
 ---
 
-## Installation
+## Cara Instalasi & Cepat Pakai
 
-### Option A: From source (recommended for developers)
+### Mode 1: Menjalankan dari Source Code (Developer)
 
+1. **Clone repository:**
+   ```bash
+   git clone [https://github.com/USERNAME/activoice.git](https://github.com/USERNAME/activoice.git)
+   cd activoice
+
+```
+
+2. **Install dependensi:**
 ```bash
-# Clone the repository
-git clone https://github.com/YOUR-USER/workspace-launcher.git
-cd workspace-launcher
-
-# Install dependencies
 pip install -r requirements.txt
 
-# Run the configurator
-python config_gui.py
-
-# Run the launcher
-python workspace.py
 ```
 
-### Option B: Compiled .exe
+
+3. **Buka GUI Konfigurasi:**
+```bash
+python config_gui.py
+
+```
+
+
+4. **Jalankan Activoice Launcher:**
+```bash
+python workspace.py
+
+```
+
+
+
+---
+
+### Mode 2: Compiled Executable (.exe)
+
+Gunakan `build.bat` untuk melakukan kompilasi otomatis ke format Standalone `.exe` via PyInstaller:
 
 ```bash
-# Build .exe files
 build.bat
 
-# Output in dist/ folder:
-#   WorkspaceLauncher.exe  — main application
-#   workspace-config.json  — configuration
 ```
 
-Copy `dist/WorkspaceLauncher.exe` + `dist/workspace-config.json` to any computer — no Python required.
+Hasil kompilasi ada di dalam folder `dist/`:
+
+* `ActivoiceLauncher.exe` — Aplikasi utama (Tray & Sound/Voice Listener)
+* `ActivoiceConfig.exe` — GUI Editor Konfigurasi
+* `workspace-config.json` — File konfigurasi aktif
 
 ---
 
-## Usage
+## Struktur Konfigurasi (`workspace-config.json`)
 
-### 1. Configuration (GUI)
-
-Run the configurator:
-
-```bash
-python config_gui.py
-# or
-WorkspaceConfig.exe
-```
-
-In the configurator:
-- **"Apps" tab** — add apps from the installed programs list or browse for .exe
-- **"Terminals" tab** — add terminals (Git Bash, PowerShell, CMD, Windows Terminal) with startup commands
-- **"Settings" tab** — set microphone sensitivity, keyboard shortcut, trigger sound, voice commands
-
-For each app/terminal you can set:
-| Option | Description |
-|--------|-------------|
-| Screen | Monitor number (1, 2, 3...) |
-| Position | `full`, `left` half, `right` half |
-| Layer | `Normal`, `On top`, `Behind` |
-| Order | Launch priority (higher = earlier) |
-| Minimize | Launch minimized |
-
-### 2. Running the launcher
-
-```bash
-python workspace.py
-# or
-WorkspaceLauncher.exe
-```
-
-The application:
-1. Starts in the system tray
-2. Loads the sound recognition model (~80 MB, one-time)
-3. Listens on the microphone — displays volume bar in the console
-4. After detecting a double clap (or hotkey/voice command) launches the active profile
-
-### 3. Triggering workspace
-
-| Method | Default setting |
-|--------|-----------------|
-| Clap | 2x hand clap |
-| Hotkey | `Win+Shift+W` |
-| Voice command | Set in configuration (e.g. "launch") |
-| Tray icon | Right-click > "Launch: [profile]" |
-
-### 4. Tray menu
-
-Right-click the tray icon:
-- **Launch: [profile]** — launch selected profile
-- **Close workspace** — close all launched processes
-- **Configuration** — open configuration GUI
-- **Quit** — close Workspace Launcher
-
----
-
-## Configuration (JSON)
-
-The `workspace-config.json` file is created automatically by the GUI. Example configuration:
+Contoh file konfigurasi `workspace-config.json`:
 
 ```json
 {
@@ -145,120 +100,69 @@ The `workspace-config.json` file is created automatically by the GUI. Example co
       "slowa_kluczowe": "launch, start work",
       "aplikacje": [
         {
-          "nazwa": "VS Code",
-          "exe": "code",
-          "argumenty": "C:\\Projects\\my-app",
+          "nazwa": "Spotify",
+          "exe": "C:\\Users\\YOUR_USER\\AppData\\Roaming\\Spotify\\Spotify.exe",
+          "argumenty": "spotify:playlist:YOUR_PLAYLIST_ID",
           "ekran": 1,
           "polowa": "",
-          "warstwa": "Normal",
+          "warstwa": "Behind",
           "kolejnosc": 0,
           "minimalizuj": false
-        }
-      ],
-      "terminale": [
+        },
         {
-          "nazwa": "Dev Server",
-          "terminal_typ": "Git Bash",
-          "folder": "C:\\Projects\\my-app",
-          "komenda": "npm run dev",
+          "nazwa": "Arc Browser",
+          "exe": "C:\\Users\\YOUR_USER\\AppData\\Local\\Microsoft\\WindowsApps\\Arc.exe",
+          "argumenty": "",
           "ekran": 2,
-          "polowa": "right",
-          "warstwa": "On top"
+          "polowa": "",
+          "warstwa": "Normal",
+          "kolejnosc": 1,
+          "minimalizuj": false
         }
       ]
     }
   }
 }
-```
 
-`slowa_kluczowe` inside a profile overrides the top-level value for that profile. The top-level field is kept as a legacy fallback.
-
-Full example in [`workspace-config.example.json`](workspace-config.example.json).
-
-### Configuration options
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `czulosc_klasniecia` | int (40-95) | Microphone volume threshold in dB |
-| `hotkey` | string | Keyboard shortcut, e.g. `Win+Shift+W`, `Ctrl+Alt+S` |
-| `zdarzenie_dzwiekowe` | string | Sound type: `Clapping`, `Finger snapping`, `Whistling`, `Knock`, `Bell` etc. |
-| `liczba_zdarzen` | int (1-3) | How many times to repeat the sound to trigger |
-| `cooldown` | int (0-30) | Pause between launches in seconds |
-| `czulosc_nn` | float (0.05-0.50) | Neural network confidence threshold (lower = more sensitive) |
-| `slowa_kluczowe` | string | Voice commands separated by commas (top-level fallback, empty = disabled) |
-| `jezyk_mowy` | string | Speech recognition language: `pl` or `en` |
-
----
-
-## Additional scripts
-
-| File | Description |
-|------|-------------|
-| `clap-trigger.py` | Standalone clap trigger (simple, no neural network) |
-| `voice-trigger.py` | Standalone voice trigger (Google Speech Recognition) |
-| `workspace-launcher.ps1` | PowerShell launcher (independent of Python) |
-| `workspace-hotkey.ahk` | AutoHotkey v2 shortcuts (`Ctrl+Alt+W`, `Ctrl+Alt+P`) |
-| `create-shortcut.vbs` | Creates Windows startup shortcut |
-| `build.bat` | Compiles .exe using PyInstaller |
-
-### Standalone clap trigger
-
-```bash
-# Listen for double clap
-python clap-trigger.py
-
-# Calibration mode — check microphone level
-python clap-trigger.py --calibrate
-
-# Change threshold and profile
-python clap-trigger.py --threshold 65 --profile praca --debug
 ```
 
 ---
 
-## Building .exe
+## Metode Trigger
 
-```bash
-# Install PyInstaller
-pip install pyinstaller
-
-# Build WorkspaceLauncher.exe (console)
-pyinstaller --onefile --name WorkspaceLauncher --console workspace.py
-
-# Build WorkspaceConfig.exe (no console)
-pyinstaller --onefile --name WorkspaceConfig --windowed config_gui.py
-```
-
-Or use the ready-made script:
-
-```bash
-build.bat
-```
+| Metode | Pemicu Default | Keterangan |
+| --- | --- | --- |
+| **Double Clap** | Tepuk tangan 2x | Dideteksi jaringan saraf PANNs CNN14 |
+| **Hotkeys** | `Win + Shift + W` | Pintasan keyboard global |
+| **Voice Command** | `"launch"` / `"start work"` | Pengenalan suara *offline* via Vosk |
+| **System Tray** | Klik Kanan Icon Tray | Pilih & jalankan profil secara manual |
 
 ---
 
-## Project structure
+## Struktur Projek
+
+```text
+activoice/
+├── workspace.py               # Main Service (Tray, AI Sound/Voice Listener, Automation Engine)
+├── config_gui.py              # GUI Editor (CustomTkinter)
+├── clap-trigger.py            # Standalone Clap Listener
+├── voice-trigger.py           # Standalone Voice Listener
+├── workspace-config.json      # File Konfigurasi Aktif
+├── workspace-config.example.json # Template Contoh Konfigurasi
+├── build.bat                  # Script Build Portable .exe
+└── requirements.txt           # Python Dependencies List
 
 ```
-workspace-launcher/
-├── workspace.py              # Main application (tray + detection + launcher)
-├── config_gui.py             # Configuration GUI
-├── clap-trigger.py           # Standalone clap trigger
-├── voice-trigger.py          # Standalone voice trigger
-├── workspace-launcher.ps1    # PowerShell launcher
-├── workspace-hotkey.ahk      # AutoHotkey v2 shortcuts
-├── workspace-config.json     # Configuration (created by GUI)
-├── workspace-config.example.json  # Example configuration
-├── build.bat                 # Build script for .exe
-├── create-shortcut.vbs       # Startup shortcut creation
-├── create-startup-shortcut.ps1
-├── clap-trigger-startup.bat
-├── requirements.txt          # Python dependencies
-└── .gitignore
-```
-
 ---
 
-## License
+## Catatan Penggunaan & Eksplorasi Aplikasi
 
-MIT
+> **Tips:** Racikan logika *delay*, simulasi tombol, dan *window focus* di dalam skrip saat ini disesuaikan khusus untuk karakteristik aplikasi tertentu (seperti Spotify dan Arc Browser). 
+> 
+> Setiap aplikasi di Windows memiliki alur *startup*, penanganan *session restore*, serta respons terhadap shortcut keyboard yang berbeda-beda. Sangat disarankan untuk mengeksplorasi dan menyesuaikan variabel penjedaan (`time.sleep`) maupun urutan perintah keyboard sesuai dengan kebutuhan aplikasi lain yang ingin kamu tambahkan ke dalam profil Activoice.
+
+---
+## Watermark & Credits
+
+* **Core Framework / System Creator:** [MateuszMlynekHub](https://github.com/MateuszMlynekHub)
+* **Upgraded & Customized By:** [StarVinn](https://github.com/StarVinn)
