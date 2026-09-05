@@ -1,0 +1,69 @@
+{
+  "czulosc_klasniecia": 60,
+  "hotkey": "Win+Shift+W",
+  "zdarzenie_dzwiekowe": "Finger snapping",
+  "liczba_zdarzen": 2,
+  "cooldown": 3,
+  "czulosc_nn": 0.11,
+  "slowa_kluczowe": "Grace, Wake up",
+  "jezyk_mowy": "en",
+  "profil_aktywny": "VINN MODE",
+  "profile": {
+    "Domyslny": {
+      "aplikacje": [],
+      "terminale": []
+    },
+    "VINN MODE": {
+      "aplikacje": [
+        {
+          "nazwa": "Spotify",
+          "exe": "C:\\Users\\GraceVinn\\AppData\\Roaming\\Spotify\\Spotify.exe",
+          "argumenty": "https://open.spotify.com/track/39shmbIHICJ2Wxnk1fPSdz?si=ebdbffd9c4d04863",
+          "ekran": 1,
+          "polowa": "",
+          "warstwa": "Behind",
+          "kolejnosc": 0,
+          "minimalizuj": false
+        },
+        {
+          "nazwa": "Arc",
+          "exe": "C:/Users/GraceVinn/AppData/Local/Microsoft/WindowsApps/Arc.exe",
+          "argumenty": "",
+          "ekran": 1,
+          "polowa": "",
+          "warstwa": "Normal",
+          "kolejnosc": 0,
+          "minimalizuj": false
+        },
+        {
+          "nazwa": "Whats App Desktop",
+          "exe": "shell:AppsFolder\\5319275A.WhatsAppDesktop!App",
+          "argumenty": "",
+          "ekran": 1,
+          "polowa": "",
+          "warstwa": "Normal",
+          "kolejnosc": 0,
+          "minimalizuj": false
+        }
+      ],
+      "terminale": [],
+      "slowa_kluczowe": "Grace, Wake up"
+    },
+    "LOVE MODE": {
+      "aplikacje": [
+        {
+          "nazwa": "Spotify",
+          "exe": "C:\\Users\\GraceVinn\\AppData\\Roaming\\Spotify\\Spotify.exe",
+          "argumenty": "https://open.spotify.com/track/3TTZfjYqhTowNALncAmY5v?si=15c7108edc0a49f0",
+          "ekran": 1,
+          "polowa": "",
+          "warstwa": "Normal",
+          "kolejnosc": 0,
+          "minimalizuj": false
+        }
+      ],
+      "terminale": [],
+      "slowa_kluczowe": "Start it, Love"
+    }
+  }
+}
