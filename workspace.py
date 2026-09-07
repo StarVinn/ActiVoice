@@ -606,28 +606,52 @@ def launch_spotify_playlist(app):
     pyautogui.press("enter")
     log(name, "playlist loaded and confirmed")
 
+def initialize_arc_window(move_to_screen_2=True):
+    """Find, focus, and maximize the Arc window for use as a pre-launch step."""
+    if pyautogui is None or gw is None:
+        return None
+
+    # Scan all visible window titles and keep only non-empty titles containing "Arc".
+    arc_windows = [window for window in gw.getAllWindows()
+                   if window.title and "Arc" in window.title]
+    if not arc_windows:
+        return None
+
+    # Use the first matching Arc window as the target for the remaining actions.
+    arc_window = arc_windows[0]
+
+    # Restore the window before activating it if it is currently minimized.
+    if arc_window.isMinimized:
+        arc_window.restore()
+
+    # Bring Arc to the foreground so keyboard shortcuts target the correct window.
+    arc_window.activate()
+    time.sleep(0.5)
+
+    # Move the focused window to the monitor on the right when requested.
+    if move_to_screen_2:
+        pyautogui.hotkey("win", "shift", "right")
+        time.sleep(0.8)
+
+    # Prefer pygetwindow's native maximize operation when Arc is not maximized.
+    if not arc_window.isMaximized:
+        arc_window.maximize()
+
+    # Keep the Windows shortcut as a fallback for Windows window-manager quirks.
+    pyautogui.hotkey("win", "up")
+    return arc_window
+
 def launch_arc_browser(app):
-    """Launch Arc, wait for session restore, then move it to Screen 2."""
+    """Launch Arc, wait for session restore, then initialize it on Screen 2."""
     name = app.get("nazwa", "Arc")
     launch_app(app)
     time.sleep(2.5)
-    if pyautogui is None or gw is None:
-        log(name, "ERROR: pyautogui and pygetwindow are required")
-        return
-
     try:
-        arc_windows = [window for window in gw.getWindowsWithTitle("Arc")
-                       if window.title]
-        if not arc_windows:
-            log(name, "Arc window not found")
+        arc_window = initialize_arc_window()
+        if arc_window is None:
+            log(name, "Arc window not found or automation dependencies are unavailable")
             return
-        arc_window = arc_windows[0]
-        arc_window.activate()
-        time.sleep(0.5)
-        pyautogui.hotkey("win", "shift", "right")
-        time.sleep(0.8)
-        arc_window.maximize()
-        pyautogui.hotkey("win", "up")
+
         time.sleep(1.5)
         center_x = arc_window.left + int(arc_window.width / 2)
         center_y = arc_window.top + int(arc_window.height / 2)
