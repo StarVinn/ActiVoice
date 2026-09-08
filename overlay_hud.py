@@ -3,6 +3,10 @@
 import os
 import queue
 import threading
+try:
+    import psutil
+except ImportError:
+    psutil = None
 import tkinter as tk
 from PIL import Image, ImageTk
 
@@ -11,6 +15,7 @@ ASSET_NAMES = {
     "THINKING": "grace_thinking.png", "ANGRY": "grace_angry.png",
     "SLEEP": "grace_sleep.png", "SHUTDOWN": "grace_shutdown.png",
     "DRAG": "grace_drag.png",
+    "TIRED": "grace_tired.png", "SAD": "grace_sad.png",
 }
 
 
@@ -22,6 +27,7 @@ class GraceHUD:
         self._commands = queue.Queue()
         self._drag_offset = (0, 0)
         self._positioned = False
+        self._monitor_stop = threading.Event()
         self.root = tk.Tk()
         self.root.overrideredirect(True)
         self.root.wm_attributes("-topmost", True)
@@ -40,6 +46,7 @@ class GraceHUD:
             widget.bind("<B1-Motion>", self._drag)
             widget.bind("<ButtonRelease-1>", self._end_drag)
         self._set_expression("IDLE")
+        threading.Thread(target=self._system_expression_loop, daemon=True, name="hud-system-monitor").start()
 
     def run(self):
         """Run Tk on the thread that created the HUD, normally the main thread."""
@@ -57,7 +64,11 @@ class GraceHUD:
             self.root.after(50, self._pump)
 
     def _set_expression(self, state):
-        path = os.path.join(self.assets_dir, ASSET_NAMES.get(str(state).upper(), ASSET_NAMES["IDLE"]))
+        state_name = str(state).upper()
+        filename = ASSET_NAMES.get(state_name, ASSET_NAMES["IDLE"])
+        path = os.path.join(self.assets_dir, filename)
+        if not os.path.exists(path):
+            path = os.path.join(self.assets_dir, ASSET_NAMES["IDLE"])
         if os.path.exists(path):
             image = Image.open(path)
             image.thumbnail((220, 220), Image.Resampling.LANCZOS)
@@ -68,6 +79,18 @@ class GraceHUD:
         if not self._positioned:
             self.root.geometry(f"+{max(0, width - self.root.winfo_reqwidth() - 24)}+{max(0, height - self.root.winfo_reqheight() - 24)}")
             self._positioned = True
+
+    def _system_expression_loop(self):
+        while not self._monitor_stop.wait(10):
+            if not psutil:
+                continue
+            try:
+                battery = psutil.sensors_battery()
+                low_battery = bool(battery and not battery.power_plugged and battery.percent < 20)
+                overloaded = psutil.cpu_percent(interval=0.5) > 85 or psutil.virtual_memory().percent > 85
+                self.set_state("TIRED" if low_battery or overloaded else "IDLE")
+            except (psutil.Error, OSError):
+                continue
 
     def _start_drag(self, event):
         """Remember the pointer offset so dragging does not jump the window."""
@@ -99,6 +122,7 @@ class GraceHUD:
             self._show_dialogue(text, seconds)
 
     def shutdown(self, wait=False):
+        self._monitor_stop.set()
         if getattr(self, "root", None):
             destroyed = threading.Event() if wait else None
 

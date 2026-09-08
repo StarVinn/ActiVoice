@@ -4,15 +4,8 @@ import ctypes
 import time
 import threading
 
-import win32api
 import win32con
 import win32gui
-
-HWND_BROADCAST = getattr(win32con, "HWND_BROADCAST", 0xFFFF)
-WM_APPCOMMAND = getattr(win32con, "WM_APPCOMMAND", 0x0319)
-APPCOMMAND_MEDIA_PLAY_PAUSE = getattr(win32con, "APPCOMMAND_MEDIA_PLAY_PAUSE", 14)
-APPCOMMAND_MEDIA_NEXTTRACK = getattr(win32con, "APPCOMMAND_MEDIA_NEXTTRACK", 11)
-APPCOMMAND_MEDIA_PREVIOUSTRACK = getattr(win32con, "APPCOMMAND_MEDIA_PREVIOUSTRACK", 12)
 
 try:
     import psutil
@@ -54,19 +47,59 @@ def prepare_arc_window(delay=0.8):
 
 
 def spotify_control(action):
-    """Broadcast a native Windows media command to background media apps."""
-    command = {
-        "play_pause": APPCOMMAND_MEDIA_PLAY_PAUSE,
-        "next": APPCOMMAND_MEDIA_NEXTTRACK,
-        "previous": APPCOMMAND_MEDIA_PREVIOUSTRACK,
+    """Control Spotify directly, with a native media-key fallback."""
+    app_command = {
+        "play_pause": getattr(win32con, "APPCOMMAND_MEDIA_PLAY_PAUSE", 14),
+        "pause": 0x2F,
+        "next": getattr(win32con, "APPCOMMAND_MEDIA_NEXTTRACK", 11),
+        "previous": getattr(win32con, "APPCOMMAND_MEDIA_PREVIOUSTRACK", 12),
     }[action]
-    win32gui.SendMessage(
-        HWND_BROADCAST,
-        WM_APPCOMMAND,
-        0,
-        command << 16,
-    )
-    return True
+    virtual_key = {
+        "play_pause": 0xCD,
+        "pause": 0xCD,
+        "next": 0xB0,
+        "previous": 0xB1,
+    }[action]
+
+    try:
+        spotify_hwnd = win32gui.FindWindowEx(0, 0, "SpotifyMainWindow", None)
+    except Exception:
+        spotify_hwnd = None
+
+    def find_spotify_window(hwnd, _):
+        nonlocal spotify_hwnd
+        title = win32gui.GetWindowText(hwnd)
+        class_name = win32gui.GetClassName(hwnd)
+        if spotify_hwnd is None and ("spotify" in title.lower() or class_name.lower() == "spotifymainwindow"):
+            spotify_hwnd = hwnd
+            return False
+        return True
+
+    try:
+        win32gui.EnumWindows(find_spotify_window, None)
+        if spotify_hwnd:
+            result = win32gui.SendMessage(
+                spotify_hwnd,
+                getattr(win32con, "WM_APPCOMMAND", 0x0319),
+                0,
+                app_command << 16,
+            )
+            if result:
+                print(f"[Spotify Control] Triggered: {action} (Success)", flush=True)
+                return True
+    except Exception:
+        pass
+
+    try:
+        user32 = ctypes.windll.user32
+        user32.keybd_event(virtual_key, 0, 0, 0)
+        time.sleep(0.1)
+        user32.keybd_event(virtual_key, 0, 2, 0)
+        print(f"[Spotify Control] Triggered: {action} (Success)", flush=True)
+        return True
+    except Exception:
+        print(f"[Spotify Control] Triggered: {action} (Failed)", flush=True)
+        return False
 
 
 def lock_workstation():
@@ -103,7 +136,7 @@ def execute_voice_command(command):
     if command == "play":
         return spotify_control("play_pause")
     if command == "pause":
-        return spotify_control("play_pause")
+        return spotify_control("pause")
     if command == "next":
         return spotify_control("next")
     if command == "lock":
@@ -118,6 +151,7 @@ def voice_command_loop(
     device_index=None,
     energy_threshold=1000,
     dynamic_energy_threshold=False,
+    processing_event=None,
 ):
     """Listen on a worker thread using SpeechRecognition, strictly in English."""
     try:
@@ -138,9 +172,13 @@ def voice_command_loop(
 
     while not stop_event.is_set():
         try:
+            if processing_event and processing_event.is_set():
+                stop_event.wait(0.05)
+                continue
             with microphone as source:
                 audio = recognizer.listen(source, timeout=1, phrase_time_limit=4)
             text = recognizer.recognize_google(audio, language=language)
+            audio = None
             command = match_voice_command(text)
             if on_command:
                 on_command(command, text)
