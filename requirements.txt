@@ -9,6 +9,11 @@ pygetwindow
 
 # GUI (config_gui.py)
 customtkinter
+edge-tts
+pygame
+psutil
+SpeechRecognition
+pywin32
 
 # Voice trigger (optional)
 vosk
