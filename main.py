@@ -5,6 +5,7 @@ import json
 import os
 import random
 import re
+import sys
 import threading
 import time
 import traceback
@@ -282,7 +283,15 @@ def main():
             else:
                 print("[SYSTEM] Shutting down launcher", flush=True)
                 speak(random.choice(EXIT_RESPONSES), hud=hud, wait=True)
-                os._exit(0)
+                stop_event.set()
+                is_processing_command.clear()
+
+                def finish_shutdown():
+                    hud.root.destroy()
+                    sys.exit(0)
+
+                hud.root.after(0, finish_shutdown)
+                return
             stop_event.wait(0.5)
         finally:
             is_processing_command.clear()
