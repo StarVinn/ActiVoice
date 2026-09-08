@@ -7,8 +7,22 @@ from tkinter import filedialog, messagebox
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
+COLORS = {"background": "#1B1924", "card": "#2A2638", "pink": "#D291BC",
+          "lavender": "#EEDCFF", "text": "#F5F3FF"}
+
 BASE_DIR = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "workspace-config.json")
+
+
+def merge_config(existing, updates):
+    """Merge GUI-owned values without discarding unknown configuration keys."""
+    merged = dict(existing)
+    for key, value in updates.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merge_config(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
 # ── System helpers ────────────────────────────────────────────
 
@@ -768,6 +782,28 @@ def main():
     ctk.CTkOptionMenu(v2, variable=voice_lang_var, values=["pl", "en"], width=80, height=32).pack(side="left")
     ctk.CTkLabel(v2, text="Model ~50MB, downloaded once on first use.", text_color="#666").pack(side="left", padx=(12, 0))
 
+    # ── Grace system controls ──
+    system_frame = ctk.CTkFrame(set_scroll, corner_radius=10, fg_color=COLORS["card"])
+    system_frame.pack(fill="x", padx=8, pady=(0, 8))
+    ctk.CTkLabel(system_frame, text="Grace system controls", font=("Segoe UI", 14, "bold"),
+                 text_color=COLORS["lavender"]).pack(anchor="w", padx=16, pady=(12, 0))
+    hours = cfg.get("work_hours", {})
+    hours_row = ctk.CTkFrame(system_frame, fg_color="transparent")
+    hours_row.pack(fill="x", padx=16, pady=(8, 6))
+    ctk.CTkLabel(hours_row, text="Vinn hours:", text_color="#888").pack(side="left")
+    work_start_var = ctk.StringVar(value=hours.get("start", "08:00"))
+    work_end_var = ctk.StringVar(value=hours.get("end", "17:00"))
+    ctk.CTkEntry(hours_row, textvariable=work_start_var, width=80, height=30).pack(side="left", padx=(8, 4))
+    ctk.CTkLabel(hours_row, text="to", text_color="#888").pack(side="left")
+    ctk.CTkEntry(hours_row, textvariable=work_end_var, width=80, height=30).pack(side="left", padx=(4, 0))
+    focus_var = ctk.BooleanVar(value=cfg.get("focus_guard", {}).get("enabled", True))
+    ctk.CTkCheckBox(system_frame, text="Enable Focus Guard", variable=focus_var,
+                    text_color=COLORS["text"]).pack(anchor="w", padx=16, pady=(2, 6))
+    blacklist_var = ctk.StringVar(value=", ".join(cfg.get("focus_guard", {}).get(
+        "blacklist", ["Genshin Impact", "Roblox", "YouTube", "Valorant", "Steam"])))
+    ctk.CTkLabel(system_frame, text="Blocked window titles (comma separated):", text_color="#888").pack(anchor="w", padx=16)
+    ctk.CTkEntry(system_frame, textvariable=blacklist_var, height=30).pack(fill="x", padx=16, pady=(4, 12))
+
     # Export / Import
     ei_frame = ctk.CTkFrame(set_scroll, corner_radius=10)
     ei_frame.pack(fill="x", padx=8, pady=(0, 8))
@@ -792,6 +828,7 @@ def main():
         try:
             with open(p, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            data = merge_config(cfg, data)
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             messagebox.showinfo("Import", "Configuration imported!\nRestart WorkspaceConfig to see changes.")
@@ -842,6 +879,15 @@ def main():
             msg = "Issues found:\n\n" + "\n".join(f"• {w}" for w in warnings) + "\n\nSave anyway?"
             if not messagebox.askyesno("Validation", msg): return
 
+        data = merge_config(cfg, data)
+        data["work_hours"] = merge_config(cfg.get("work_hours", {}), {
+            "start": work_start_var.get().strip() or "08:00",
+            "end": work_end_var.get().strip() or "17:00",
+        })
+        data["focus_guard"] = merge_config(cfg.get("focus_guard", {}), {
+            "enabled": focus_var.get(),
+            "blacklist": [item.strip() for item in blacklist_var.get().split(",") if item.strip()],
+        })
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
 

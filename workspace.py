@@ -7,6 +7,10 @@ import ctypes, ctypes.wintypes, json, math, os, queue, re, shutil, subprocess, s
 from concurrent.futures import ThreadPoolExecutor
 import numpy as np, sounddevice as sd
 try:
+    import psutil
+except ImportError:
+    psutil = None
+try:
     import pyautogui
 except ImportError:
     pyautogui = None
@@ -255,23 +259,75 @@ def _is_browser_exe(exe):
 
 # ── Helpers ───────────────────────────────────────────────────
 
-def is_process_running(exe_path):
-    """Check if a process with exact exe name is running."""
-    if not exe_path: return False
-    target = os.path.basename(exe_path).lower()
-    try:
-        r = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=5)
-        for line in r.stdout.splitlines():
-            line = line.strip()
-            if not line: continue
-            # CSV format: "name.exe","PID","Session","#","Mem"
-            parts = line.split('","')
-            if parts:
-                proc_name = parts[0].strip('"').lower()
-                if proc_name == target:
-                    return True
+def _has_visible_gui_window(pid):
+    """Return whether a process owns a visible, non-minimized top-level window."""
+    found = False
+
+    def callback(hwnd, _):
+        nonlocal found
+        if not user32.IsWindowVisible(hwnd) or user32.IsIconic(hwnd):
+            return True
+        if user32.GetWindowTextLengthW(hwnd) == 0:
+            return True
+        owner = user32.GetWindow(hwnd, 4)  # GW_OWNER
+        if owner:
+            return True
+        process_id = ctypes.wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+        if process_id.value == pid:
+            found = True
+            return False
+        return True
+
+    user32.EnumWindows(EnumWindowsProc(callback), 0)
+    return found
+
+
+def is_process_running(process_name):
+    """Return whether an executable has an active visible desktop window."""
+    if not psutil or not process_name:
         return False
-    except Exception: return False
+    target = os.path.basename(process_name).lower()
+    try:
+        for process in psutil.process_iter(["name"]):
+            name = process.info.get("name")
+            if name and name.lower() == target and _has_visible_gui_window(process.pid):
+                return True
+    except (psutil.Error, OSError):
+        return False
+    return False
+
+
+def is_battery_saver_active():
+    """Return whether Windows reports Battery Saver/Energy Saver as enabled."""
+    try:
+        import winreg
+
+        key_path = r"Software\Microsoft\Windows\CurrentVersion\BatterySaver"
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key_path) as key:
+            for value_name in ("EnergySaverState", "BatterySaverState"):
+                try:
+                    value, _ = winreg.QueryValueEx(key, value_name)
+                    if int(value) == 1:
+                        return True
+                except (FileNotFoundError, TypeError, ValueError):
+                    continue
+    except (OSError, ImportError):
+        pass
+    return False
+
+
+def should_skip_workspace_launch():
+    """Return True when low battery or Windows power saving blocks auto-launch."""
+    if is_battery_saver_active():
+        return True
+    if not psutil:
+        return False
+    try:
+        battery = psutil.sensors_battery()
+        return bool(battery and not battery.power_plugged and battery.percent <= 20)
+    except (psutil.Error, OSError):
+        return False
 
 def get_active_profile(cfg):
     profiles = cfg.get("profile", {})
@@ -407,7 +463,8 @@ def _launch_process(exe, args_str, name):
     is_url = args_str.startswith("http") if args_str else False
     is_uwp = exe and "windowsapps" in exe.lower()
     is_browser = exe and _is_browser_exe(exe)
-    already_running = exe and is_process_running(exe)
+    process_name = _get_configured_process_name({"nazwa": name, "exe": exe, "argumenty": args_str})
+    already_running = process_name and is_process_running(process_name)
     eff_exe = os.path.basename(exe).lower() if exe else ""
 
     # ── Convert known app URLs to native protocol URIs (e.g. spotify:track:xxx) ──
@@ -573,103 +630,90 @@ def launch_app(app):
         log(name, f"ERROR: {e}")
 
 def launch_spotify_playlist(app):
-    """Open Spotify, focus its window, then confirm the playlist UI."""
+    """Launch Spotify cleanly and start playback with an OS media key."""
     name = app.get("nazwa", "Spotify")
-    playlist_uri = "spotify:playlist:6aJXYmUuEkTmt4tEtQM6WO"
-    log(name, f"start: cmd.exe /c start {playlist_uri}")
-    subprocess.Popen(f"cmd.exe /c start {playlist_uri}", shell=True)
-    if pyautogui is None:
-        log(name, "ERROR: pyautogui is not installed")
-        return
-
-    time.sleep(11)
-    try:
-        spotify_windows = pyautogui.getWindowsWithTitle("Spotify")
-    except Exception as e:
-        log(name, f"focus warning: {e}")
-        spotify_windows = []
-
-    if spotify_windows:
-        try:
-            spotify_window = spotify_windows[0]
-            spotify_window.activate()
-            time.sleep(1)
-            click_x = spotify_window.left + int(spotify_window.width * 0.3)
-            click_y = spotify_window.top + int(spotify_window.height * 0.4)
-            pyautogui.click(click_x, click_y)
-            time.sleep(0.5)
-        except Exception as e:
-            log(name, f"focus/click warning: {e}")
+    if is_process_running("Spotify.exe"):
+        print(f"[SKIP] {name} is already open.", flush=True)
     else:
-        log(name, "Spotify window not found; sending keys without focus")
-    pyautogui.press("tab")
-    pyautogui.press("enter")
-    log(name, "playlist loaded and confirmed")
+        exe = app.get("exe", "Spotify.exe")
+        resolved, needs_shell = _resolve_exe(exe)
+        if resolved:
+            try:
+                proc = subprocess.Popen([resolved], shell=needs_shell)
+                _add_pid(proc.pid)
+                log(name, f"started: {os.path.basename(resolved)}")
+            except Exception:
+                return
 
-def initialize_arc_window(move_to_screen_2=True):
-    """Find, focus, and maximize the Arc window for use as a pre-launch step."""
-    if pyautogui is None or gw is None:
-        return None
-
-    # Scan all visible window titles and keep only non-empty titles containing "Arc".
-    arc_windows = [window for window in gw.getAllWindows()
-                   if window.title and "Arc" in window.title]
-    if not arc_windows:
-        return None
-
-    # Use the first matching Arc window as the target for the remaining actions.
-    arc_window = arc_windows[0]
-
-    # Restore the window before activating it if it is currently minimized.
-    if arc_window.isMinimized:
-        arc_window.restore()
-
-    # Bring Arc to the foreground so keyboard shortcuts target the correct window.
-    arc_window.activate()
-    time.sleep(0.5)
-
-    # Move the focused window to the monitor on the right when requested.
-    if move_to_screen_2:
-        pyautogui.hotkey("win", "shift", "right")
-        time.sleep(0.8)
-
-    # Prefer pygetwindow's native maximize operation when Arc is not maximized.
-    if not arc_window.isMaximized:
-        arc_window.maximize()
-
-    # Keep the Windows shortcut as a fallback for Windows window-manager quirks.
-    pyautogui.hotkey("win", "up")
-    return arc_window
+    time.sleep(3)
+    try:
+        if pyautogui:
+            pyautogui.press("playpause")
+    except Exception:
+        pass
 
 def launch_arc_browser(app):
-    """Launch Arc, wait for session restore, then initialize it on Screen 2."""
+    """Launch Arc.exe without changing its default startup state."""
     name = app.get("nazwa", "Arc")
-    launch_app(app)
-    time.sleep(2.5)
+    if is_process_running("Arc.exe"):
+        print(f"[SKIP] {name} is already open.", flush=True)
+        return
+    exe = app.get("exe", "Arc.exe")
+    resolved, needs_shell = _resolve_exe(exe)
+    if not resolved:
+        return
     try:
-        arc_window = initialize_arc_window()
-        if arc_window is None:
-            log(name, "Arc window not found or automation dependencies are unavailable")
-            return
-
-        time.sleep(1.5)
-        center_x = arc_window.left + int(arc_window.width / 2)
-        center_y = arc_window.top + int(arc_window.height / 2)
-        pyautogui.click(center_x, center_y)
-        time.sleep(1.0)
-        pyautogui.hotkey("ctrl", "t")
-        time.sleep(1.0)
-        pyautogui.press("enter")
-        time.sleep(1.5)
-        log(name, "moved to Screen 2 and maximized")
-    except Exception as e:
-        log(name, f"move/focus ERROR: {e}")
+        proc = subprocess.Popen([resolved], shell=needs_shell)
+        _add_pid(proc.pid)
+        log(name, f"started: {os.path.basename(resolved)}")
+    except Exception:
+        pass
 
 def _launch_configured_app(app):
     app_name = app.get("nazwa", "").strip().lower()
     if app_name == "spotify":
         launch_spotify_playlist(app)
-    elif "arc" in app_name:
+    else:
+        process_name = _get_configured_process_name(app)
+        if process_name and is_process_running(process_name):
+            print(f"[SKIP] {app.get('nazwa', 'app')} is already open.", flush=True)
+            return
+        if "arc" in app_name:
+            launch_arc_browser(app)
+        else:
+            launch_app(app)
+
+def _get_configured_process_name(app):
+    """Resolve a configured app to the executable used for duplicate checks."""
+    app_name = app.get("nazwa", "").strip().lower()
+    compact_name = re.sub(r"[\s_-]+", "", app_name)
+    if app_name == "spotify":
+        return "Spotify.exe"
+    if "arc" in app_name:
+        return "Arc.exe"
+    if "vs code" in app_name or "visual studio code" in app_name:
+        return "Code.exe"
+    if "whatsapp" in compact_name:
+        return "WhatsApp.exe"
+    exe = app.get("exe", "")
+    if exe:
+        return os.path.basename(exe)
+    args = app.get("argumenty", "").strip()
+    if args.startswith("spotify:") or "open.spotify.com" in args.lower():
+        return "Spotify.exe"
+    if args.startswith("http"):
+        browser = _find_browser()
+        return os.path.basename(browser) if browser else ""
+    return ""
+
+def _launch_configured_app_with_guard(app):
+    process_name = _get_configured_process_name(app)
+    if process_name and is_process_running(process_name):
+        print(f"[SKIP] {app.get('nazwa', 'app')} is already open.", flush=True)
+        return
+    if process_name:
+        _launch_configured_app(app)
+    elif "arc" in app.get("nazwa", "").strip().lower():
         launch_arc_browser(app)
     else:
         launch_app(app)
@@ -690,6 +734,16 @@ def launch_terminal(term):
     ekran = term.get("ekran", 0)
     polowa = term.get("polowa", "")
     warstwa = term.get("warstwa", "Normalnie")
+    process_by_type = {
+        "Git Bash": "mintty.exe",
+        "PowerShell": "powershell.exe",
+        "CMD": "cmd.exe",
+        "Windows Terminal": "WindowsTerminal.exe",
+    }
+    process_name = process_by_type.get(typ)
+    if process_name and is_process_running(process_name):
+        print(f"[SKIP] {name} is already open.", flush=True)
+        return
     log(name, f"{typ}: {komenda.split(chr(10))[0] if komenda else '(shell)'}")
 
     # Snapshot all windows BEFORE launching so we can find the NEW one
@@ -772,6 +826,10 @@ def launch_terminal(term):
         log(name, f"ERROR: {e}")
 
 def launch_profile(data):
+    if should_skip_workspace_launch():
+        print("[POWER] Low battery or Battery Saver active; skipping workspace launch.", flush=True)
+        return False
+
     global launched_pids
     with _pids_lock:
         launched_pids = []
@@ -788,7 +846,7 @@ def launch_profile(data):
         else:
             rest.append(a)
     for k in sorted(ordered.keys()):
-        for a in ordered[k]: _launch_configured_app(a)
+        for a in ordered[k]: _launch_configured_app_with_guard(a)
 
     # Phase 2: launch remaining apps
     # Group by executable basename — same exe runs SEQUENTIALLY (prevents window cross-matching)
@@ -817,14 +875,14 @@ def launch_profile(data):
 
     # Spotify must complete before any other application starts.
     for a in spotify_apps:
-        launch_spotify_playlist(a)
+        _launch_configured_app_with_guard(a)
     for a in arc_apps:
-        launch_arc_browser(a)
+        _launch_configured_app_with_guard(a)
 
     def _launch_group(group_apps):
         """Launch a group of apps with same exe SEQUENTIALLY."""
         for a in group_apps:
-            _launch_configured_app(a)
+            _launch_configured_app_with_guard(a)
 
     with ThreadPoolExecutor(max_workers=6) as pool:
         futs = [pool.submit(_launch_group, group) for group in exe_groups.values()]
@@ -833,7 +891,7 @@ def launch_profile(data):
             try: f.result()
             except Exception as e: print(f"  ! {e}", flush=True)
     print(f"\n{'='*40}\n  DONE! ({len(launched_pids)} processes)\n{'='*40}\n", flush=True)
-    os._exit(0)
+    return True
 
 def close_workspace():
     closed = 0
@@ -993,45 +1051,9 @@ def wait_for_claps(threshold, callback=None):
                         state["last_trigger"] = time.time()
                         if callback:
                             threading.Thread(target=safe_callback, args=(0,), daemon=True).start()
-                else:
-                    meter_print(f"  [x] NN rejected: {top_label} (score: {score:.2f})")
             except Exception as e:
                 meter_print(f"  ! ERROR inference: {e}")
     threading.Thread(target=inference_worker, daemon=True).start()
-
-    # Live volume meter display thread
-    def display_loop():
-        while state["running"]:
-            db = state["current_db"]
-            model_ok = _panns_ready.is_set()
-            last = state["last_sound"]
-            err = state["error"]
-
-            bar_w = 30
-            filled = int(min(db / 96.0, 1.0) * bar_w)
-            thresh_pos = min(int(threshold / 96.0 * bar_w), bar_w - 1)
-
-            bar = ""
-            for i in range(bar_w):
-                if i == thresh_pos and i >= filled:
-                    bar += "!"
-                elif i < filled:
-                    bar += "|"
-                else:
-                    bar += "."
-
-            nn = "OK" if model_ok else "loading..."
-            line = f"\r  MIC [{bar}] {db:4.0f}/{threshold} dB | NN: {nn}"
-            if err:
-                line += f" | ERR: {err}"
-            elif last:
-                line += f" | {last}"
-            line += "    "
-
-            sys.stdout.write(line)
-            sys.stdout.flush()
-            time.sleep(0.15)
-    threading.Thread(target=display_loop, daemon=True).start()
 
     def cb(indata, frames, t, status):
         if not state["running"]: return
@@ -1060,7 +1082,6 @@ def wait_for_claps(threshold, callback=None):
                 if crest >= 4.0:
                     state["spike_times"] = [st for st in state["spike_times"] if now - st < 2.0] + [now]
                     nc = len(state["spike_times"])
-                    meter_print(f"  [{'*'*nc}] Spike #{nc}/{TRIGGER_COUNT} ({db:.0f} dB, crest: {crest:.1f})")
                     if nc >= TRIGGER_COUNT and (TRIGGER_COUNT < 2 or state["spike_times"][-1] - state["spike_times"][-2] >= 0.08):
                         state["spike_times"] = []
                         # Schedule NN verification (delayed capture for better audio)
@@ -1299,7 +1320,7 @@ def main():
         ce = os.path.join(BASE_DIR, "WorkspaceConfig.exe")
         if os.path.exists(ce): os.startfile(ce)
         else: print("Missing workspace-config.json!")
-        input("Enter..."); sys.exit(0)
+        return
 
     with open(CONFIG_PATH, "r", encoding="utf-8") as f: cfg = json.load(f)
 
@@ -1313,39 +1334,9 @@ def main():
     hotkey_str = cfg.get("hotkey", "Win+Shift+W")
     profile = get_active_profile(cfg)
     apps = profile.get("aplikacje", []); terms = profile.get("terminale", [])
-    if not apps and not terms: print("No apps configured!"); input("Enter..."); sys.exit(0)
-
-    pnames = get_profile_names(cfg)
-    print(f"{'='*40}\n  Workspace Launcher\n{'='*40}")
-    print(f"  Sensitivity: {threshold} dB | NN threshold: {CLAP_THRESHOLD_SCORE} | Hotkey: {hotkey_str}")
-    print(f"  Trigger: {trigger_sound} x{TRIGGER_COUNT} | Cooldown: {TRIGGER_COOLDOWN}s")
-    if pnames: print(f"  Profiles: {', '.join(pnames)} | Active: {cfg.get('profil_aktywny', pnames[0])}")
-    print(f"  Apps: {len(apps)} | Terminals: {len(terms)}")
-    print(f"  Detection: spectral analysis (distinguishes claps from speech/music)")
-    print(f"{'-'*40}", flush=True)
-
-    # List monitors
-    mons = get_monitors()
-    print(f"  Monitors ({len(mons)}):", flush=True)
-    for i, (mx, my, mw, mh) in enumerate(mons):
-        print(f"    [{i+1}] pos=({mx},{my}) size={mw}x{mh}", flush=True)
-
-    # List audio input devices for debugging
-    print("  Audio devices (input):", flush=True)
-    try:
-        devices = sd.query_devices()
-        default_in = sd.default.device[0] if isinstance(sd.default.device, (list, tuple)) else sd.default.device
-        found_any = False
-        for i, d in enumerate(devices):
-            if d['max_input_channels'] > 0:
-                marker = " <<< ACTIVE" if i == default_in else ""
-                print(f"    [{i}] {d['name']} (ch:{d['max_input_channels']}, {int(d['default_samplerate'])}Hz){marker}", flush=True)
-                found_any = True
-        if not found_any:
-            print("    ! No input devices - microphone will not be detected!", flush=True)
-    except Exception as e:
-        print(f"    ! Error listing devices: {e}", flush=True)
-    print(f"{'-'*40}", flush=True)
+    if not apps and not terms:
+        print("No apps configured!")
+        return
 
     lock = threading.Lock()
     def do_launch(name=None):
@@ -1417,6 +1408,5 @@ def main():
         tray[0].run()
     finally:
         on_quit()
-    sys.exit(0)
 
 if __name__ == "__main__": main()
