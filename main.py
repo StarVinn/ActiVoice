@@ -39,6 +39,17 @@ EXIT_RESPONSES = [
     "Shutting down, have a good rest, Vinn!",
     "Closing launcher now, catch you later!",
 ]
+WORK_START_DIALOGS = [
+    "Vinn, work hours have started! I'm enabling Focus Guard now, let's focus on coding first!",
+    "Let's go Vinn! Work mode is active. I'll be keeping an eye on game apps for now!",
+    "Time to get back in the zone, Vinn! Keep away from distractions so we can finish early!",
+]
+
+RELAX_START_DIALOGS = [
+    "Work hours are done, Vinn! Disabling Focus Guard, enjoy your rest or go play some games!",
+    "Hooray, all done! Relax mode activated Vinn, feel free to play Genshin or listen to music now!",
+    "Great hard work today, Vinn! Time to unwind and take it easy for now!",
+]
 
 
 def execute_native_media_command(action):
@@ -235,6 +246,25 @@ def main():
         "interval": 30,
         "enabled_event": focus_enabled,
     }, daemon=True, name="focus-guard").start()
+
+    def mode_transition_loop():
+        last_mode = active_mode(config)
+        while not stop_event.wait(3):
+            current_mode = active_mode(config)
+            if current_mode == last_mode:
+                continue
+
+            last_mode = current_mode
+            if current_mode == "VINN MODE":
+                focus_enabled.set()
+                hud.set_state("WORKING", "VINN MODE active.", 8)
+                speak(random.choice(WORK_START_DIALOGS), "WORKING", hud, wait=True)
+            else:
+                focus_enabled.clear()
+                hud.set_state("IDLE", "RELAX MODE active.", 8)
+                speak(random.choice(RELAX_START_DIALOGS), "IDLE", hud, wait=True)
+
+    threading.Thread(target=mode_transition_loop, daemon=True, name="mode-scheduler").start()
     threading.Thread(target=battery_guard, args=(stop_event, hud, speak, stop_event.set),
                      daemon=True, name="battery-guard").start()
 
