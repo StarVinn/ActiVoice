@@ -157,12 +157,18 @@ def main():
     print_startup_menu(config)
     hud = GraceHUD()
     stop_event = threading.Event()
+    workspace_launched = False
+    workspace_launching = False
+    workspace_launch_lock = threading.Lock()
+    clap_stream = {"value": None}
+
     mode = active_mode(config)
-    hud.set_state("WORKING", f"{mode} active. Starting workspace.")
-    speak(f"{mode} is active. Starting workspace.", hud=hud)
+    hud.set_state("IDLE", "STANDBY: Awaiting Activation...")
+    print("[SYSTEM] STANDBY: Awaiting Activation...", flush=True)
 
     def launch_workspace():
-        """Start the existing workspace launcher without blocking Tk."""
+        """Start the existing workspace launcher after standby activation."""
+        nonlocal workspace_launched, workspace_launching
         try:
             import workspace
 
@@ -171,17 +177,52 @@ def main():
                 print(f"[POWER] {message}", flush=True)
                 hud.set_state("SLEEP", message, 8)
                 speak(message, hud=hud)
+                workspace_launching = False
                 return
 
             workspace.launch_profile(workspace.get_active_profile(config))
+            workspace_launched = True
+            workspace_launching = False
             hud.set_state("IDLE", "Workspace ready.")
             workspace.main()
         except Exception as exc:
+            workspace_launching = False
             print(f"[startup] workspace launch failed: {exc}", flush=True)
             traceback.print_exc()
             hud.set_state("IDLE", "Workspace startup failed.")
 
-    threading.Thread(target=launch_workspace, daemon=True, name="workspace-launch").start()
+    def activate_workspace(source):
+        nonlocal workspace_launching
+        with workspace_launch_lock:
+            if workspace_launched or workspace_launching:
+                return
+            workspace_launching = True
+        stream = clap_stream["value"]
+        if stream:
+            try:
+                stream.stop()
+                stream.close()
+            except Exception:
+                pass
+        print(f"[SYSTEM] Workspace activation: {source}", flush=True)
+        speak("Launching your workspace now, Vinn!", hud=hud, wait=True)
+        thread = threading.Thread(target=launch_workspace, daemon=True, name="workspace-launch")
+        thread.start()
+
+    def start_clap_listener():
+        try:
+            import workspace
+
+            threshold = config.get("czulosc_klasniecia", 70)
+            stream, _ = workspace.wait_for_claps(
+                threshold,
+                callback=lambda _event: activate_workspace("clap"),
+            )
+            clap_stream["value"] = stream
+        except Exception as exc:
+            print(f"[clap] standby listener unavailable: {exc}", flush=True)
+
+    threading.Thread(target=start_clap_listener, daemon=True, name="standby-clap").start()
 
     focus = config.get("focus_guard", {})
     focus_enabled = threading.Event()
@@ -212,14 +253,15 @@ def main():
             "skip music": "next",
             "next song": "next",
             "skip song": "next",
+            "launch workspace": "launch_workspace",
+            "start work": "launch_workspace",
+            "wake up": "launch_workspace",
             "lock workspace": "lock",
             "lock screen": "lock",
             "sleep": "lock",
             "status report": "status",
             "system status": "status",
             "check system": "status",
-            "enable focus guard": "focus_enable",
-            "disable focus guard": "focus_disable",
             "exit launcher": "exit",
             "kill launcher": "exit",
             "shutdown": "exit",
@@ -265,6 +307,8 @@ def main():
             elif matched_command == "focus_disable":
                 focus_enabled.clear()
                 print("[EXECUTE] Disable Focus Guard", flush=True)
+            elif matched_command == "launch_workspace":
+                activate_workspace("voice")
             elif matched_command == "pause":
                 print("[EXECUTE] Pause Music", flush=True)
                 execute_native_media_command("pause")
