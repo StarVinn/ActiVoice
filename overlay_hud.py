@@ -133,8 +133,8 @@ class GraceHUD:
                 continue
             try:
                 battery = psutil.sensors_battery()
-                low_battery = bool(battery and not battery.power_plugged and battery.percent < 20)
-                overloaded = psutil.cpu_percent(interval=0.5) > 85 or psutil.virtual_memory().percent > 85
+                low_battery = bool(battery and not battery.power_plugged and battery.percent < 40)
+                overloaded = psutil.cpu_percent(interval=0.5) > 95 or psutil.virtual_memory().percent > 95
                 self.set_state("TIRED" if low_battery or overloaded else "IDLE")
             except (psutil.Error, OSError):
                 continue

@@ -208,7 +208,7 @@ def battery_guard(stop_event, hud=None, speak=None, on_shutdown=None, interval=3
             return
         try:
             battery = psutil.sensors_battery()
-            if battery and battery.percent <= 20 and not battery.power_plugged:
+            if battery and battery.percent <= 40 and not battery.power_plugged:
                 if hud:
                     hud.set_state("SHUTDOWN", "Battery low. I am shutting down safely.", 5)
                 if speak:
