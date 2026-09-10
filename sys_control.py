@@ -201,14 +201,22 @@ def pause_workspace():
         pass
 
 
-def battery_guard(stop_event, hud=None, speak=None, on_shutdown=None, interval=30):
-    """Stop safely when an unplugged battery reaches 20 percent."""
+def battery_guard(
+    stop_event,
+    hud=None,
+    speak=None,
+    on_shutdown=None,
+    interval=30,
+    threshold_provider=None,
+):
+    """Stop safely using a startup-aware unplugged battery threshold."""
     while not stop_event.wait(interval):
         if not psutil:
             return
         try:
             battery = psutil.sensors_battery()
-            if battery and battery.percent <= 40 and not battery.power_plugged:
+            threshold = threshold_provider() if threshold_provider else 40
+            if battery and battery.percent <= threshold and not battery.power_plugged:
                 if hud:
                     hud.set_state("SHUTDOWN", "Battery low. I am shutting down safely.", 5)
                 if speak:

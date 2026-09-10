@@ -265,8 +265,17 @@ def main():
                 speak(random.choice(RELAX_START_DIALOGS), "IDLE", hud, wait=True)
 
     threading.Thread(target=mode_transition_loop, daemon=True, name="mode-scheduler").start()
-    threading.Thread(target=battery_guard, args=(stop_event, hud, speak, stop_event.set),
-                     daemon=True, name="battery-guard").start()
+
+    def battery_threshold():
+        return 40 if workspace_launched else 50
+
+    threading.Thread(
+        target=battery_guard,
+        args=(stop_event, hud, speak, stop_event.set),
+        kwargs={"threshold_provider": battery_threshold},
+        daemon=True,
+        name="battery-guard",
+    ).start()
 
     command_state = {"last_command": None, "last_command_time": 0.0}
     command_state_lock = threading.Lock()
