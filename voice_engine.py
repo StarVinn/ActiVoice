@@ -41,14 +41,17 @@ def _speak_worker(text, state, hud):
 
 
 def speak(text, state=None, hud=None, wait=False):
-    """Queue voice feedback on a daemon thread without blocking the caller.
+    """Run TTS on a worker thread and return that worker immediately.
 
-    ``wait`` is retained for compatibility with existing call sites, but TTS must
-    never join the command/listener thread.  The worker lock serializes access
-    to pygame and the shared temporary audio file while commands continue to be
-    accepted in the foreground.
+    Normal notifications must leave ``wait`` as ``False`` so the listener stays
+    responsive.  ``wait=True`` is reserved for controlled shutdown, where the
+    caller deliberately waits for its farewell audio before closing the app.
+    The worker lock serializes pygame and the shared temporary audio file.
     """
     if hud:
         hud.set_state(state or "IDLE", text, None)
     worker = threading.Thread(target=_speak_worker, args=(text, state, hud), daemon=True)
     worker.start()
+    if wait:
+        worker.join()
+    return worker

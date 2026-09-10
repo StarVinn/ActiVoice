@@ -216,7 +216,7 @@ def main():
             except Exception:
                 pass
         print(f"[SYSTEM] Workspace activation: {source}", flush=True)
-        speak("Launching your workspace now, Vinn!", hud=hud, wait=True)
+        speak("Launching your workspace now, Vinn!", hud=hud)
         thread = threading.Thread(target=launch_workspace, daemon=True, name="workspace-launch")
         thread.start()
 
@@ -258,11 +258,11 @@ def main():
             if current_mode == "VINN MODE":
                 focus_enabled.set()
                 hud.set_state("WORKING", "VINN MODE active.", 8)
-                speak(random.choice(WORK_START_DIALOGS), "WORKING", hud, wait=True)
+                speak(random.choice(WORK_START_DIALOGS), "WORKING", hud)
             else:
                 focus_enabled.clear()
                 hud.set_state("IDLE", "RELAX MODE active.", 8)
-                speak(random.choice(RELAX_START_DIALOGS), "IDLE", hud, wait=True)
+                speak(random.choice(RELAX_START_DIALOGS), "IDLE", hud)
 
     threading.Thread(target=mode_transition_loop, daemon=True, name="mode-scheduler").start()
 
@@ -283,6 +283,16 @@ def main():
     command_state_lock = threading.Lock()
     is_processing_command = threading.Event()
     media_cooldown_until = {"value": 0.0}
+    farewell_played = threading.Event()
+
+    def play_exit_farewell():
+        """Play exactly one farewell before a user-initiated launcher exit."""
+        if farewell_played.is_set():
+            return
+        farewell_played.set()
+        # This deliberate join applies only while exiting. All ordinary command
+        # feedback remains asynchronous so the assistant can keep listening.
+        speak(random.choice(EXIT_RESPONSES), hud=hud, wait=True)
 
     def handle_voice_command(command, transcript):
         normalized = re.sub(r"\s+", " ", transcript.lower().strip())
@@ -341,7 +351,7 @@ def main():
         try:
             if matched_command == "status":
                 print("[EXECUTE] System Status", flush=True)
-                speak(system_status_message(), hud=hud, wait=True)
+                speak(system_status_message(), hud=hud)
             elif matched_command == "focus_enable":
                 focus_enabled.set()
                 print("[EXECUTE] Enable Focus Guard", flush=True)
@@ -353,29 +363,28 @@ def main():
             elif matched_command == "pause":
                 print("[EXECUTE] Pause Music", flush=True)
                 execute_native_media_command("pause")
-                speak(random.choice(MEDIA_RESPONSES), hud=hud, wait=True)
+                speak(random.choice(MEDIA_RESPONSES), hud=hud)
                 return
             elif matched_command in {"play", "next"}:
                 print(f"[EXECUTE] {matched_command.title()} Music", flush=True)
                 execute_native_media_command(matched_command)
-                speak(random.choice(MEDIA_RESPONSES), hud=hud, wait=True)
+                speak(random.choice(MEDIA_RESPONSES), hud=hud)
                 return
             elif matched_command == "lock":
                 print("[EXECUTE] Lock Workspace", flush=True)
                 success = execute_voice_command(matched_command)
                 if success:
-                    speak(random.choice(LOCK_RESPONSES), hud=hud, wait=True)
+                    speak(random.choice(LOCK_RESPONSES), hud=hud)
             else:
                 print("[SYSTEM] Shutting down launcher", flush=True)
-                speak(random.choice(EXIT_RESPONSES), hud=hud, wait=True)
+                # Exit is the one intentional blocking case: do not destroy
+                # the HUD/process until the worker has finished the farewell.
+                play_exit_farewell()
                 stop_event.set()
                 is_processing_command.clear()
-
-                def finish_shutdown():
-                    hud.root.destroy()
-                    sys.exit(0)
-
-                hud.root.after(0, finish_shutdown)
+                # GraceHUD queues destruction onto its owning Tk thread; this
+                # avoids calling Tk directly from the voice-listener worker.
+                hud.shutdown()
                 return
             stop_event.wait(0.5)
         finally:
@@ -407,6 +416,9 @@ def main():
         traceback.print_exc()
     finally:
         stop_event.set()
+        # Covers a normal HUD close or an interrupt as well as the voice exit.
+        # The event avoids repeating audio after the command-driven farewell.
+        play_exit_farewell()
         hud.shutdown()
 
 
