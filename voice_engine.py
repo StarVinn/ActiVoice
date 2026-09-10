@@ -34,14 +34,16 @@ def _speak_worker(text, state, hud):
             os.remove(path)
         except OSError:
             pass
-        if hud and state:
-            hud.set_state(state)
+        if hud:
+            hud.finish_dialogue(1.0)
+            if state:
+                hud.set_state(state)
 
 
 def speak(text, state=None, hud=None, wait=False):
     """Speak asynchronously, or wait until playback completes when requested."""
-    if hud and state:
-        hud.set_state(state, text)
+    if hud:
+        hud.set_state(state or "IDLE", text, None)
     worker = threading.Thread(target=_speak_worker, args=(text, state, hud), daemon=True)
     worker.start()
     if wait:
