@@ -208,21 +208,122 @@ def battery_guard(
     on_shutdown=None,
     interval=30,
     threshold_provider=None,
+    shutdown_delay=10,
 ):
-    """Stop safely using a startup-aware unplugged battery threshold."""
-    while not stop_event.wait(interval):
+    """Monitor power changes and schedule a cancellable low-battery shutdown.
+
+    A charger connection always clears ``is_shutdown_pending`` and cancels the
+    active timer before any other battery logic runs.  This prevents a timer
+    started while unplugged from shutting down a device that is now charging.
+    """
+    is_shutdown_pending = False
+    shutdown_timer = None
+    shutdown_state_lock = threading.Lock()
+    last_plugged_in = None
+    low_warning_announced = False
+    critical_warning_announced = False
+
+    def cancel_pending_shutdown():
+        """Atomically cancel the scheduled shutdown, if there is one."""
+        nonlocal is_shutdown_pending, shutdown_timer
+        with shutdown_state_lock:
+            if shutdown_timer:
+                shutdown_timer.cancel()
+                shutdown_timer = None
+            is_shutdown_pending = False
+
+    def trigger_shutdown():
+        """Run only if the charger has not cancelled this scheduled action."""
+        nonlocal is_shutdown_pending
+        # Re-read the power source because Timer.cancel() cannot stop a timer
+        # callback that has already begun on another thread.
+        try:
+            current_battery = psutil.sensors_battery() if psutil else None
+            if current_battery and current_battery.power_plugged:
+                cancel_pending_shutdown()
+                return
+        except Exception as exc:
+            print(f"[battery] shutdown verification failed: {exc}", flush=True)
+            return
+        with shutdown_state_lock:
+            if not is_shutdown_pending or stop_event.is_set():
+                return
+            is_shutdown_pending = False
+        if stop_event.is_set():
+            return
+        if on_shutdown:
+            on_shutdown()
+
+    while not stop_event.is_set():
         if not psutil:
             return
         try:
             battery = psutil.sensors_battery()
             threshold = threshold_provider() if threshold_provider else 40
-            if battery and battery.percent <= threshold and not battery.power_plugged:
-                if hud:
-                    hud.set_state("SHUTDOWN", "Battery low. I am shutting down safely.", 5)
-                if speak:
-                    speak("Battery is low and the charger is disconnected. Goodbye for now.", "SHUTDOWN", hud)
-                if on_shutdown:
-                    on_shutdown()
-                return
+            if not battery:
+                if stop_event.wait(interval):
+                    return
+                continue
+
+            plugged_in = battery.power_plugged
+            if plugged_in:
+                # This is deliberately first: charging invalidates every
+                # unplugged warning, event flag, and pending shutdown timer.
+                cancel_pending_shutdown()
+                low_warning_announced = False
+                critical_warning_announced = False
+                if last_plugged_in is not True and speak:
+                    message = "Charger connected. Shutdown cancelled and battery charging has started."
+                    if hud:
+                        hud.set_state("IDLE", message, 5)
+                    speak(message, "IDLE", hud)
+            else:
+                if last_plugged_in is not False and speak:
+                    message = "Charger disconnected. I will monitor the battery closely."
+                    if hud:
+                        hud.set_state("TIRED", message, 5)
+                    speak(message, "TIRED", hud)
+
+                critical_threshold = min(15, threshold)
+                if battery.percent <= critical_threshold:
+                    if not critical_warning_announced:
+                        message = (
+                            f"Critical battery warning. Battery is at {battery.percent:.0f} percent "
+                            "and the charger is disconnected. Shutdown will begin shortly."
+                        )
+                        if hud:
+                            hud.set_state("SHUTDOWN", message, 5)
+                        if speak:
+                            speak(message, "SHUTDOWN", hud)
+                        critical_warning_announced = True
+                    if not is_shutdown_pending:
+                        with shutdown_state_lock:
+                            # The lock prevents duplicate timers if a future
+                            # caller invokes this guard's state transition.
+                            if not is_shutdown_pending:
+                                is_shutdown_pending = True
+                                shutdown_timer = threading.Timer(shutdown_delay, trigger_shutdown)
+                                shutdown_timer.daemon = True
+                                shutdown_timer.start()
+                elif battery.percent <= threshold and not low_warning_announced:
+                    message = (
+                        f"Low battery warning. Battery is at {battery.percent:.0f} percent. "
+                        "Please connect the charger soon."
+                    )
+                    if hud:
+                        hud.set_state("TIRED", message, 5)
+                    if speak:
+                        speak(message, "TIRED", hud)
+                    low_warning_announced = True
+                elif battery.percent > threshold:
+                    low_warning_announced = False
+                    critical_warning_announced = False
+                    # A recovered battery should not retain an old shutdown.
+                    cancel_pending_shutdown()
+
+            last_plugged_in = plugged_in
         except Exception as exc:
             print(f"[battery] {exc}", flush=True)
+        if stop_event.wait(interval):
+            cancel_pending_shutdown()
+            return

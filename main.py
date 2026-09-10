@@ -272,7 +272,9 @@ def main():
     threading.Thread(
         target=battery_guard,
         args=(stop_event, hud, speak, stop_event.set),
-        kwargs={"threshold_provider": battery_threshold},
+        # Check transitions frequently so connecting a charger promptly cancels
+        # any pending low-battery shutdown.
+        kwargs={"threshold_provider": battery_threshold, "interval": 5},
         daemon=True,
         name="battery-guard",
     ).start()
