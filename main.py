@@ -109,9 +109,9 @@ def print_startup_menu(config):
     print('  - "pause music" / "stop"      -> Pause Spotify')
     print('  - "skip music" / "next"       -> Skip to next track')
     print("- System Controls:")
-    print('  - "lock workspace" / "sleep"  -> Lock Windows PC')
+    print('  - "lock workspace" / "lock screen"  -> Lock Windows PC')
     print("- Launcher Controls:")
-    print('  - "shutdown" / "exit"       -> Shutdown Launcher & Close CMD')
+    print('  - "shutdown" / "exit launcher"       -> Shutdown Launcher & Close CMD')
     print("--------------------------------------------------")
     print()
 
