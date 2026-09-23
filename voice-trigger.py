@@ -12,7 +12,7 @@ If pyaudio doesn't install on Windows:
 Usage:
     python voice-trigger.py
 
-Say: "uruchom workspace" or "start praca" etc.
+Say: "start workspace", "launch workspace", or "start work".
 """
 
 import subprocess
@@ -35,16 +35,16 @@ LAUNCHER_SCRIPT = os.path.join(
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "workspace-config.json")
 
-# Speech recognition language (pl-PL = Polish, en-US = English)
-LANGUAGE = "pl-PL"
+# Voice commands are intentionally English-only.
+LANGUAGE = "en-US"
 
 FALLBACK_COMMANDS = {
-    "uruchom workspace": "default",
     "start workspace": "default",
-    "workspace domyslny": "default",
-    "uruchom prace": "praca",
-    "start praca": "praca",
-    "workspace praca": "praca",
+    "launch workspace": "default",
+    "open workspace": "default",
+    "start work": "praca",
+    "launch work": "praca",
+    "workspace work": "praca",
 }
 
 

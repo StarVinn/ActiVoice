@@ -1353,7 +1353,8 @@ def main():
     voice_state = None
     voice_feed = None
     voice_keywords = get_active_profile_keywords(cfg)
-    voice_lang = cfg.get("jezyk_mowy", "en")
+    # Runtime voice recognition is English-only; config cannot switch it.
+    voice_lang = "en"
     cooldown_ref = [TRIGGER_COOLDOWN]
 
     stream, clap_state = wait_for_claps(threshold, callback=lambda n: do_launch())

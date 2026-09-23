@@ -272,24 +272,14 @@ def battery_guard(
                 cancel_pending_shutdown()
                 low_warning_announced = False
                 critical_warning_announced = False
-                if last_plugged_in is not True and speak:
-                    message = "Charger connected. Shutdown cancelled and battery charging has started."
-                    if hud:
-                        hud.set_state("IDLE", message, 5)
-                    speak(message, "IDLE", hud)
+                # Charger transitions are intentionally silent.
             else:
-                if last_plugged_in is not False and speak:
-                    message = "Charger disconnected. I will monitor the battery closely."
-                    if hud:
-                        hud.set_state("TIRED", message, 5)
-                    speak(message, "TIRED", hud)
-
                 critical_threshold = min(15, threshold)
                 if battery.percent <= critical_threshold:
                     if not critical_warning_announced:
                         message = (
-                            f"Critical battery warning. Battery is at {battery.percent:.0f} percent "
-                            "and the charger is disconnected. Shutdown will begin shortly."
+                            f"Critical battery warning. Battery is at {battery.percent:.0f} percent. "
+                            "Shutdown will begin shortly."
                         )
                         if hud:
                             hud.set_state("SHUTDOWN", message, 5)
