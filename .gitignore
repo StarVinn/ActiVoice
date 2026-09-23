@@ -34,3 +34,5 @@ _term_*.bat
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+.env 
