@@ -152,3 +152,17 @@ Launcher menggunakan `os._exit(0)` setelah seluruh batch launching selesai. Kare
 
 - **Core Framework / System Creator:** [MateuszMlynekHub](https://github.com/MateuszMlynekHub)
 - **Upgraded & Customized By:** [StarVinn](https://github.com/StarVinn)
+
+
+## Grace Gemini + PyQt6 HUD
+
+- Gemini model is pinned to `gemini-3.6-flash`; API key is read from `.env` as `GEMINI_API_KEY`.
+- Global Gemini push-to-talk uses `Ctrl+Alt` and speech recognition is English (`en-US`).
+- TTS uses `en-US-MichelleNeural`, `rate=-5%`, `pitch=+18Hz`.
+- The Grace HUD uses PyQt6 `QPixmap.scaled(..., KeepAspectRatio)`, `resizeEvent()`, `QVBoxLayout`, and `QHBoxLayout`.
+- HUD resizing uses the native PyQt6 `QSizeGrip` with the diagonal `SizeFDiagCursor` (NW-SE style); there are no `+/-` resize buttons.
+- Grace remains anchored on the right side of the HUD when the speech bubble is hidden; the avatar does not jump to the center.
+- The speech bubble stays hidden when there is no dialogue.
+- Shutdown requires a second English confirmation keyword; cancellation returns Grace to `grace_idle.png`.
+- All nine Grace avatar states are mapped in `overlay_hud.py`.
+- Startup greeting is randomized across four variants and is shown in the HUD and spoken aloud. Charger connected/disconnected announcements are not part of startup.

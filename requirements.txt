@@ -24,3 +24,5 @@ vosk
 
 # Sound classification (PANNs - auto-downloaded)
 panns-inference
+PyQt6
+python-dotenv
