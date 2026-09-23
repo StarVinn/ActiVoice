@@ -24,6 +24,8 @@ from focus_guard import focus_guard_loop
 from overlay_hud import GraceHUD
 from sys_control import battery_guard, execute_voice_command, voice_command_loop
 from voice_engine import speak
+from gemini_engine import GeminiClient, GeminiError
+from global_hotkey import GlobalPushToTalk
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "workspace-config.json")
@@ -44,6 +46,16 @@ WORK_START_DIALOGS = [
     "Let's go Vinn! Work mode is active. I'll be keeping an eye on game apps for now!",
     "Time to get back in the zone, Vinn! Keep away from distractions so we can finish early!",
 ]
+
+STARTUP_GREETINGS = [
+    "[ACTIVE_MODE] is active. Grace is ready, sir!",
+    "Grace is online, sir. [ACTIVE_MODE] is active, and I am standing by.",
+    "System ready. [ACTIVE_MODE] is active. What shall we do first, sir?",
+    "Welcome back, sir. [ACTIVE_MODE] is active, and Grace is ready for your commands.",
+]
+
+SHUTDOWN_CONFIRMATION_KEYWORDS = {"confirm", "yes", "do it"}
+SHUTDOWN_CANCEL_KEYWORDS = {"cancel", "stop", "never mind", "nevermind", "no"}
 
 RELAX_START_DIALOGS = [
     "Work hours are done, Vinn! Disabling Focus Guard, enjoy your rest or go play some games!",
@@ -98,7 +110,7 @@ def print_startup_menu(config):
     print(f"==================================================")
     print()
     print("+--------------------------------------------------+")
-    print("|              GRACE ACTIVOICE LAUNCHER            |")
+    print("|            GRACE ACTIVOICE LAUNCHER              |")
     print("+--------------------------------------------------+")
     print()
     print("--------------------------------------------------")
@@ -110,8 +122,9 @@ def print_startup_menu(config):
     print('  - "skip music" / "next"       -> Skip to next track')
     print("- System Controls:")
     print('  - "lock workspace" / "lock screen"  -> Lock Windows PC')
+    print('  - "turn off my PC"                -> Shutdown PC (Requires Confirmation)')
     print("- Launcher Controls:")
-    print('  - "shutdown" / "exit launcher"       -> Shutdown Launcher & Close CMD')
+    print('  - "exit launcher" / "kill launcher" -> Exit Launcher process only')
     print("--------------------------------------------------")
     print()
 
@@ -126,25 +139,6 @@ def active_mode(config):
     start, end = rules.get("start", "08:00"), rules.get("end", "17:00")
     now = datetime.now(ZoneInfo("Asia/Jakarta")).time()
     return "VINN MODE" if clock_time.fromisoformat(start) <= now <= clock_time.fromisoformat(end) else "RELAX MODE"
-
-
-def block_low_battery_startup():
-    """Stop startup when running unplugged below the safe battery threshold."""
-    if not psutil:
-        return False
-    try:
-        battery = psutil.sensors_battery()
-    except (psutil.Error, OSError):
-        return False
-
-    if battery and not battery.power_plugged and battery.percent < 50:
-        print(
-            f"[WARNING] Battery level is at {battery.percent:.0f}%. "
-            "Launcher startup blocked to save power. Please plug in the charger.",
-            flush=True,
-        )
-        os._exit(0)
-    return False
 
 
 def system_status_message():
@@ -162,20 +156,36 @@ def system_status_message():
     )
 
 
+def execute_pc_shutdown():
+    """Issue the actual Windows shutdown only after confirmation has been verified."""
+    if os.name != "nt":
+        print("[SHUTDOWN] Non-Windows platform; shutdown request skipped.", flush=True)
+        return False
+    try:
+        result = ctypes.windll.shell32.ShellExecuteW(None, "open", "shutdown.exe", "/s /t 0", None, 0)
+        return result > 32
+    except Exception as exc:
+        print(f"[SHUTDOWN] failed: {exc}", flush=True)
+        return False
+
+
 def main():
-    block_low_battery_startup()
     config = load_config()
     print_startup_menu(config)
     hud = GraceHUD()
     stop_event = threading.Event()
+    gemini = GeminiClient()
+    shutdown_pending = threading.Event()
+    shutdown_lock = threading.Lock()
     workspace_launched = False
     workspace_launching = False
     workspace_launch_lock = threading.Lock()
     clap_stream = {"value": None}
 
     mode = active_mode(config)
-    hud.set_state("IDLE", "STANDBY: Awaiting Activation...")
-    print("[SYSTEM] STANDBY: Awaiting Activation...", flush=True)
+    startup_greeting = random.choice(STARTUP_GREETINGS).replace("[ACTIVE_MODE]", mode)
+    hud.set_state("IDLE", startup_greeting, 8)
+    speak(startup_greeting, "IDLE", hud)
 
     def launch_workspace():
         """Start the existing workspace launcher after standby activation."""
@@ -272,8 +282,6 @@ def main():
     threading.Thread(
         target=battery_guard,
         args=(stop_event, hud, speak, stop_event.set),
-        # Check transitions frequently so connecting a charger promptly cancels
-        # any pending low-battery shutdown.
         kwargs={"threshold_provider": battery_threshold, "interval": 5},
         daemon=True,
         name="battery-guard",
@@ -290,12 +298,55 @@ def main():
         if farewell_played.is_set():
             return
         farewell_played.set()
-        # This deliberate join applies only while exiting. All ordinary command
-        # feedback remains asynchronous so the assistant can keep listening.
         speak(random.choice(EXIT_RESPONSES), hud=hud, wait=True)
+
+    def request_shutdown_confirmation(source="voice"):
+        with shutdown_lock:
+            if shutdown_pending.is_set():
+                return
+            shutdown_pending.set()
+        message = (
+            "Shutdown request detected. Are you sure you want to turn off your PC, Vinn? "
+            "Say confirm, yes, or do it to proceed, or say cancel or stop to abort."
+        )
+        print(f"[SHUTDOWN] Awaiting confirmation from {source}.", flush=True)
+        hud.set_state("SHUTDOWN", message, None)
+        speak(message, "SHUTDOWN", hud)
+
+    def cancel_shutdown_confirmation(reason="cancelled"):
+        with shutdown_lock:
+            shutdown_pending.clear()
+        message = "Shutdown cancelled. Keeping your PC running, Vinn!"
+        print(f"[SHUTDOWN] {reason}", flush=True)
+        hud.set_state("ANGRY", message, 5)
+        speak(message, "ANGRY", hud)
+        hud.set_state("IDLE")
+
+    def confirm_shutdown():
+        with shutdown_lock:
+            if not shutdown_pending.is_set():
+                return
+            shutdown_pending.clear()
+        message = "Confirmed. Turning off your PC now. Have a good rest, Vinn!"
+        print("[SHUTDOWN] Confirmation accepted.", flush=True)
+        hud.set_state("SHUTDOWN", message, 5)
+        speak(message, "SHUTDOWN", hud, wait=True)
+        stop_event.set()
+        execute_pc_shutdown()
 
     def handle_voice_command(command, transcript):
         normalized = re.sub(r"\s+", " ", transcript.lower().strip())
+
+        # Shutdown confirmation has priority over all ordinary commands.
+        if shutdown_pending.is_set():
+            if any(re.search(rf"\b{re.escape(word)}\b", normalized) for word in SHUTDOWN_CANCEL_KEYWORDS):
+                cancel_shutdown_confirmation("explicit cancellation keyword")
+            elif any(re.search(rf"\b{re.escape(word)}\b", normalized) for word in SHUTDOWN_CONFIRMATION_KEYWORDS):
+                confirm_shutdown()
+            else:
+                hud.set_state("SHUTDOWN", "Please confirm with yes, confirm, or cancel to abort, Vinn.", 5)
+            return
+
         intents = {
             "play music": "play",
             "resume music": "play",
@@ -315,7 +366,9 @@ def main():
             "check system": "status",
             "exit launcher": "exit",
             "kill launcher": "exit",
-            "shutdown": "exit",
+            "turn off my pc": "shutdown_confirm",
+            "turn off pc": "shutdown_confirm",
+            "shutdown pc": "shutdown_confirm",
         }
         matched_command = next(
             (
@@ -349,6 +402,9 @@ def main():
 
         hud.set_state("WORKING", transcript, 3)
         try:
+            if matched_command == "shutdown_confirm":
+                request_shutdown_confirmation("voice")
+                return
             if matched_command == "status":
                 print("[EXECUTE] System Status", flush=True)
                 speak(system_status_message(), hud=hud)
@@ -377,13 +433,9 @@ def main():
                     speak(random.choice(LOCK_RESPONSES), hud=hud)
             else:
                 print("[SYSTEM] Shutting down launcher", flush=True)
-                # Exit is the one intentional blocking case: do not destroy
-                # the HUD/process until the worker has finished the farewell.
                 play_exit_farewell()
                 stop_event.set()
                 is_processing_command.clear()
-                # GraceHUD queues destruction onto its owning Tk thread; this
-                # avoids calling Tk directly from the voice-listener worker.
                 hud.shutdown()
                 return
             stop_event.wait(0.5)
@@ -406,6 +458,54 @@ def main():
             print(f"[voice] background listener failed: {exc}", flush=True)
             traceback.print_exc()
 
+    def capture_ptt_command():
+        """Capture one short phrase for Gemini from the Ctrl+Alt PTT trigger."""
+        try:
+            import speech_recognition as sr
+            recognizer = sr.Recognizer()
+            recognizer.energy_threshold = 800
+            recognizer.dynamic_energy_threshold = False
+            recognizer.pause_threshold = 0.65
+            with sr.Microphone() as source:
+                hud.set_state("THINKING", "Listening...", 4)
+                audio = recognizer.listen(source, timeout=2, phrase_time_limit=6)
+            transcript = recognizer.recognize_google(audio, language="en-US")
+            print(f"[PTT] {transcript}", flush=True)
+            
+            # Semak arahan penutupan PC melalui PTT
+            if shutdown_pending.is_set() or re.search(r"\b(turn off my pc|turn off pc|shutdown pc)\b", transcript.lower()):
+                handle_voice_command("shutdown_confirm", transcript)
+                return
+                
+            if gemini.available:
+                hud.set_state("THINKING", "Gemini is thinking...", None)
+                try:
+                    answer = gemini.generate(transcript)
+                    hud.set_state("THINKING", "Gemini is replying...", None)
+                    speak(answer, "IDLE", hud)
+                except GeminiError as exc:
+                    print(f"[GEMINI] {exc}", flush=True)
+                    hud.set_state("SAD", "Gemini is unavailable right now, sir.", 5)
+                    speak("Gemini is unavailable right now, sir.", "SAD", hud)
+            else:
+                message = "Gemini is not configured, sir. Add GEMINI_API_KEY to .env first."
+                hud.set_state("SAD", message, 5)
+                speak(message, "SAD", hud)
+        except sr.WaitTimeoutError:
+            hud.set_state("IDLE", "I didn't hear anything, sir.", 3)
+        except sr.UnknownValueError:
+            hud.set_state("SAD", "I couldn't understand that, sir.", 3)
+        except Exception as exc:
+            print(f"[PTT] {exc}", flush=True)
+            hud.set_state("SAD", "The microphone is unavailable, sir.", 4)
+
+    ptt = GlobalPushToTalk(capture_ptt_command, hotkey="ctrl+alt")
+    try:
+        ptt.start()
+        print("[SYSTEM] Ctrl+Alt push-to-talk for Gemini is active.", flush=True)
+    except Exception as exc:
+        print(f"[PTT] global hotkey unavailable: {exc}", flush=True)
+
     print("[SYSTEM] Voice command listener active.", flush=True)
     threading.Thread(target=listen_for_voice_commands, daemon=True, name="voice-control").start()
 
@@ -415,9 +515,11 @@ def main():
         print(f"[hud] main loop failed: {exc}", flush=True)
         traceback.print_exc()
     finally:
+        try:
+            ptt.stop()
+        except Exception:
+            pass
         stop_event.set()
-        # Covers a normal HUD close or an interrupt as well as the voice exit.
-        # The event avoids repeating audio after the command-driven farewell.
         play_exit_farewell()
         hud.shutdown()
 
