@@ -1,4 +1,4 @@
-"""ActiVoice entry point: Grace HUD, guards, and the existing workspace launcher."""
+﻿"""ActiVoice entry point: Grace HUD, guards, and the existing workspace launcher."""
 
 import ctypes
 import json
@@ -306,8 +306,7 @@ def main():
                 return
             shutdown_pending.set()
         message = (
-            "Shutdown request detected. Are you sure you want to turn off your PC, Vinn? "
-            "Say confirm, yes, or do it to proceed, or say cancel or stop to abort."
+            "Shutdown request detected. Say do it to proceed, say cancel or stop to abort. "
         )
         print(f"[SHUTDOWN] Awaiting confirmation from {source}.", flush=True)
         hud.set_state("SHUTDOWN", message, None)
