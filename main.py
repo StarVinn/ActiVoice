@@ -306,7 +306,7 @@ def main():
                 return
             shutdown_pending.set()
         message = (
-            "Shutdown request detected. Say do it to proceed, say cancel or stop to abort. "
+            "Shutdown request detected. Please say the command word. "
         )
         print(f"[SHUTDOWN] Awaiting confirmation from {source}.", flush=True)
         hud.set_state("SHUTDOWN", message, None)
