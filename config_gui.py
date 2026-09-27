@@ -382,7 +382,7 @@ def main():
     installed = scan_installed_apps()
 
     root = ctk.CTk()
-    root.title("Workspace Launcher")
+    root.title("ActiVoice Configuration")
     root.geometry("740x680")
     root.minsize(680, 450)
 

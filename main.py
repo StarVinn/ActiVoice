@@ -42,7 +42,7 @@ EXIT_RESPONSES = [
     "Closing launcher now, catch you later!",
 ]
 WORK_START_DIALOGS = [
-    "Vinn, work hours have started! I'm enabling Focus Guard now, let's focus on coding first!",
+    "Vinn, work hours have started! I'm enabling Focus Guard now, let's focus on task first!",
     "Let's go Vinn! Work mode is active. I'll be keeping an eye on game apps for now!",
     "Time to get back in the zone, Vinn! Keep away from distractions so we can finish early!",
 ]
