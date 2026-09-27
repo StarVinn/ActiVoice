@@ -334,9 +334,7 @@ def pick_app(parent, apps):
 # ── Welcome dialog ────────────────────────────────────────────
 
 APP_DESCRIPTION = (
-    "Workspace Launcher opens your work environment on a double clap. "
-    "Add apps and terminals, set which screen they should open on, "
-    "save and run WorkspaceLauncher.exe."
+    "ActiVoice controls your workspace and AI assistant via voice commands. Customise voice responses, manage HUD states, set mode schedules, and run ActiVoice.exe."
 )
 
 def show_welcome(parent):
@@ -350,7 +348,7 @@ def show_welcome(parent):
     content = ctk.CTkFrame(dlg, fg_color="transparent")
     content.pack(fill="both", expand=True, padx=30, pady=25)
 
-    ctk.CTkLabel(content, text="Workspace Launcher", font=("Segoe UI", 22, "bold")).pack(anchor="w")
+    ctk.CTkLabel(content, text="ActiVoice Configuration", font=("Segoe UI", 22, "bold")).pack(anchor="w")
     ctk.CTkLabel(content, text="v1.0", text_color="#666").pack(anchor="w", pady=(0, 15))
     ctk.CTkLabel(content, text=APP_DESCRIPTION, wraplength=440, justify="left", text_color="#bbb").pack(anchor="w", pady=(0, 20))
 
@@ -389,7 +387,7 @@ def main():
     # ── Header ──
     header = ctk.CTkFrame(root, fg_color="transparent")
     header.pack(fill="x", padx=24, pady=(20, 0))
-    ctk.CTkLabel(header, text="Workspace Launcher", font=("Segoe UI", 22, "bold")).pack(side="left")
+    ctk.CTkLabel(header, text="ActiVoice Configuration", font=("Segoe UI", 22, "bold")).pack(side="left")
     ctk.CTkLabel(header, text=f"{len(mons)} screens  ·  {len(installed)} apps",
                  text_color="#666").pack(side="right")
 
