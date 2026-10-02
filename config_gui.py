@@ -12,6 +12,46 @@ COLORS = {"background": "#1B1924", "card": "#2A2638", "pink": "#D291BC",
 
 BASE_DIR = os.path.dirname(sys.executable if getattr(sys, "frozen", False) else os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "workspace-config.json")
+VOICE_CACHE_PATH = os.path.join(BASE_DIR, "voices_cache.json")
+
+DEFAULT_DIALOGS = {
+    "startup": "Grace is online, sir. {name} mode is active and I am standing by.",
+    "workspace_launch": "Launching your workspace now, {name}!",
+    "lock": "Locking your workspace now, {name}.",
+    "shutdown_request": "Shutdown request detected. Please say the command word.",
+    "shutdown_confirmed": "Confirmed. Turning off your PC now. Have a good rest, {name}!",
+    "shutdown_cancelled": "Shutdown cancelled. Keeping your PC running, {name}!",
+    "exit": "Goodbye {name}, see you!",
+    "focus_warning": "Hey {name}, shouldn't you be coding right now? Please close it.",
+    "focus_closed": "Time's up, {name}! I closed it for you.",
+    "low_battery": "Low battery warning. Battery is at {battery} percent. Please connect the charger soon.",
+    "critical_battery": "Critical battery warning. Battery is at {battery} percent. Shutdown will begin shortly.",
+    "mode_work": "Work mode is active, {name}.",
+    "mode_relax": "Relax mode is active, {name}.",
+}
+
+DEFAULT_AVATAR_STATE_MAP = {
+    "IDLE": "assets/grace_idle.png",
+    "WORKING": "assets/grace_working.png",
+    "THINKING": "assets/grace_thinking.png",
+    "SHUTDOWN": "assets/grace_shutdown.png",
+    "ANGRY": "assets/grace_angry.png",
+    "SAD": "assets/grace_sad.png",
+    "TALKING": "assets/grace_idle.png",
+}
+
+DEFAULT_CONFIGURATION = {
+    "display_name": "Vinn",
+    "dialogs": DEFAULT_DIALOGS,
+    "avatar_states": DEFAULT_AVATAR_STATE_MAP,
+    "tts": {
+        "voice": "en-US-MichelleNeural",
+        "pitch": "+18Hz",
+        "rate": "-5%",
+    },
+    "timezone": "Asia/Jakarta",
+    "modes": [],
+}
 
 
 def merge_config(existing, updates):
@@ -371,12 +411,77 @@ def show_welcome(parent):
 WARSTWY = ["Normal", "On top", "Behind"]
 TERM_TYPES = ["Git Bash", "PowerShell", "CMD", "Windows Terminal"]
 
+def get_configuration_block(cfg):
+    raw = cfg.get("configuration", {}) if isinstance(cfg, dict) else {}
+    if not isinstance(raw, dict):
+        raw = {}
+    return merge_config(DEFAULT_CONFIGURATION, raw)
+
+
+def default_voice_candidates():
+    return [
+        "en-US-MichelleNeural",
+        "en-US-AriaNeural",
+        "en-US-GuyNeural",
+        "en-US-JennyNeural",
+        "en-US-DavisNeural",
+        "en-US-JaneNeural",
+        "en-US-RogerNeural",
+        "en-GB-SoniaNeural",
+        "en-GB-RyanNeural",
+        "en-AU-NatashaNeural",
+        "en-AU-WilliamNeural",
+        "en-IN-NeerjaNeural",
+        "en-IN-PrabhatNeural",
+    ]
+
+
+def fetch_voice_candidates():
+    candidates = default_voice_candidates()
+    try:
+        result = subprocess.run(["edge-tts", "--list-voices"], capture_output=True, text=True, timeout=20)
+        if result.returncode != 0:
+            return candidates
+        lines = []
+        for line in result.stdout.splitlines():
+            text = line.strip()
+            if not text:
+                continue
+            if "Name:" in text:
+                value = text.split("Name:", 1)[1].strip()
+                if value and value.startswith("en-") and value not in lines:
+                    lines.append(value)
+        if lines:
+            ordered = []
+            for voice in lines:
+                if voice.startswith("en-") and voice not in ordered:
+                    ordered.append(voice)
+            for voice in candidates:
+                if voice.startswith("en-") and voice not in ordered:
+                    ordered.append(voice)
+            if ordered:
+                return ordered
+    except Exception:
+        pass
+    return candidates
+
+
+def store_voice_cache(candidates):
+    try:
+        with open(VOICE_CACHE_PATH, "w", encoding="utf-8") as stream:
+            json.dump(candidates, stream, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
 def main():
     mons = get_monitors(); mc = max(len(mons), 1)
     cfg = {"czulosc_klasniecia": 70, "aplikacje": [], "terminale": []}
     first_run = not os.path.exists(CONFIG_PATH)
     if not first_run:
         with open(CONFIG_PATH, "r", encoding="utf-8") as f: cfg = json.load(f)
+    cfg.setdefault("configuration", {})
+    cfg["configuration"] = merge_config(DEFAULT_CONFIGURATION, cfg.get("configuration", {}))
     installed = scan_installed_apps()
 
     root = ctk.CTk()
@@ -457,6 +562,7 @@ def main():
     tab_apps = tabs.add("Apps")
     tab_term = tabs.add("Terminals")
     tab_set = tabs.add("Settings")
+    tab_config = tabs.add("Configuration")
 
     # ═══════════ TAB: Aplikacje ═══════════
     app_scroll = ctk.CTkScrollableFrame(tab_apps, fg_color="transparent")
@@ -780,28 +886,6 @@ def main():
     ctk.CTkOptionMenu(v2, variable=voice_lang_var, values=["pl", "en"], width=80, height=32).pack(side="left")
     ctk.CTkLabel(v2, text="Model ~50MB, downloaded once on first use.", text_color="#666").pack(side="left", padx=(12, 0))
 
-    # ── Grace system controls ──
-    system_frame = ctk.CTkFrame(set_scroll, corner_radius=10, fg_color=COLORS["card"])
-    system_frame.pack(fill="x", padx=8, pady=(0, 8))
-    ctk.CTkLabel(system_frame, text="Grace system controls", font=("Segoe UI", 14, "bold"),
-                 text_color=COLORS["lavender"]).pack(anchor="w", padx=16, pady=(12, 0))
-    hours = cfg.get("work_hours", {})
-    hours_row = ctk.CTkFrame(system_frame, fg_color="transparent")
-    hours_row.pack(fill="x", padx=16, pady=(8, 6))
-    ctk.CTkLabel(hours_row, text="Vinn hours:", text_color="#888").pack(side="left")
-    work_start_var = ctk.StringVar(value=hours.get("start", "08:00"))
-    work_end_var = ctk.StringVar(value=hours.get("end", "17:00"))
-    ctk.CTkEntry(hours_row, textvariable=work_start_var, width=80, height=30).pack(side="left", padx=(8, 4))
-    ctk.CTkLabel(hours_row, text="to", text_color="#888").pack(side="left")
-    ctk.CTkEntry(hours_row, textvariable=work_end_var, width=80, height=30).pack(side="left", padx=(4, 0))
-    focus_var = ctk.BooleanVar(value=cfg.get("focus_guard", {}).get("enabled", True))
-    ctk.CTkCheckBox(system_frame, text="Enable Focus Guard", variable=focus_var,
-                    text_color=COLORS["text"]).pack(anchor="w", padx=16, pady=(2, 6))
-    blacklist_var = ctk.StringVar(value=", ".join(cfg.get("focus_guard", {}).get(
-        "blacklist", ["Genshin Impact", "Roblox", "YouTube", "Valorant", "Steam"])))
-    ctk.CTkLabel(system_frame, text="Blocked window titles (comma separated):", text_color="#888").pack(anchor="w", padx=16)
-    ctk.CTkEntry(system_frame, textvariable=blacklist_var, height=30).pack(fill="x", padx=16, pady=(4, 12))
-
     # Export / Import
     ei_frame = ctk.CTkFrame(set_scroll, corner_radius=10)
     ei_frame.pack(fill="x", padx=8, pady=(0, 8))
@@ -839,12 +923,206 @@ def main():
     ctk.CTkButton(ei_btns, text="Import", command=do_import, width=130, height=34,
                    fg_color="#444", hover_color="#555").pack(side="left")
 
+    # ═══════════ TAB: Configuration ═══════════
+    config_scroll = ctk.CTkScrollableFrame(tab_config, fg_color="transparent")
+    config_scroll.pack(fill="both", expand=True)
+
+    config_default = get_configuration_block(cfg)
+    display_name_var = ctk.StringVar(value=config_default.get("display_name", "Vinn"))
+    dialog_vars = {key: ctk.StringVar(value=(config_default.get("dialogs") or {}).get(key, default)) for key, default in DEFAULT_DIALOGS.items()}
+    avatar_state_vars = {}
+    avatar_defaults = config_default.get("avatar_states") or DEFAULT_AVATAR_STATE_MAP
+    for state_name in ["IDLE", "WORKING", "THINKING", "SHUTDOWN", "ANGRY", "SAD", "TALKING"]:
+        avatar_state_vars[state_name] = ctk.StringVar(value=avatar_defaults.get(state_name, DEFAULT_AVATAR_STATE_MAP.get(state_name, "")))
+    tts_cfg = config_default.get("tts") or {}
+    voice_choices = fetch_voice_candidates()
+    voice_var = ctk.StringVar(value=tts_cfg.get("voice") or voice_choices[0])
+    pitch_var = ctk.StringVar(value=str(tts_cfg.get("pitch") or "+18Hz"))
+    rate_var = ctk.StringVar(value=str(tts_cfg.get("rate") or "-5%"))
+    timezone_choices = sorted(__import__("zoneinfo").available_timezones())
+    timezone_var = ctk.StringVar(value=config_default.get("timezone") or "Asia/Jakarta")
+
+    def make_browse_fn(var):
+        def browse():
+            path = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp *.webp"), ("All files", "*.*")])
+            if path:
+                var.set(path)
+        return browse
+
+    def test_selected_voice():
+        try:
+            from voice_engine import speak
+            voice_name = voice_var.get().strip() or (voice_choices[0] if voice_choices else "en-US-MichelleNeural")
+            rate_value = rate_var.get().strip() or "-5%"
+            pitch_value = pitch_var.get().strip() or "+18Hz"
+            speak(
+                "This is a test of the selected Grace voice.",
+                state="IDLE",
+                hud=None,
+                wait=True,
+                voice_name=voice_name,
+                rate=rate_value,
+                pitch=pitch_value,
+            )
+            messagebox.showinfo("Voice preview", f"Preview played with: {voice_name}")
+        except Exception as exc:
+            messagebox.showerror("Voice preview", f"Unable to play the test voice:\n{exc}")
+
+    def add_labeled_text(section, label, help_text, var, placeholder=""):
+        ctk.CTkLabel(section, text=label, text_color="#888", anchor="w").pack(anchor="w", padx=16, pady=(10, 2))
+        ctk.CTkEntry(section, textvariable=var, height=32, placeholder_text=placeholder).pack(fill="x", padx=16)
+        ctk.CTkLabel(section, text=help_text, text_color="#666", font=("Segoe UI", 10), justify="left", wraplength=560).pack(anchor="w", padx=16, pady=(4, 0))
+
+    def add_avatar_row(section, state_name, var):
+        row = ctk.CTkFrame(section, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=(6, 4))
+        ctk.CTkLabel(row, text=state_name, text_color="#888", width=100).pack(side="left")
+        ctk.CTkEntry(row, textvariable=var, height=30).pack(side="left", fill="x", expand=True, padx=(8, 8))
+        ctk.CTkButton(row, text="Browse", width=80, height=30, command=make_browse_fn(var), fg_color="#444", hover_color="#555").pack(side="left")
+
+    profile_section = ctk.CTkFrame(config_scroll, corner_radius=10)
+    profile_section.pack(fill="x", padx=8, pady=(8, 8))
+    ctk.CTkLabel(profile_section, text="User Profile & Dialogs", font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=16, pady=(12, 4))
+    add_labeled_text(profile_section, "Display Name", 'This name replaces the {name} placeholder across all dialogs.', display_name_var, "Vinn")
+    for key, default in DEFAULT_DIALOGS.items():
+        add_labeled_text(profile_section, key.replace("_", " ").title(), "Supported placeholders: {name}, {battery}, {cpu}, {ram}", dialog_vars[key], default)
+
+    avatar_section = ctk.CTkFrame(config_scroll, corner_radius=10)
+    avatar_section.pack(fill="x", padx=8, pady=(0, 8))
+    ctk.CTkLabel(avatar_section, text="Avatar & HUD Mapping", font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=16, pady=(12, 0))
+    for state_name in ["IDLE", "WORKING", "THINKING", "SHUTDOWN", "ANGRY", "SAD", "TALKING"]:
+        add_avatar_row(avatar_section, state_name, avatar_state_vars[state_name])
+
+    voice_section = ctk.CTkFrame(config_scroll, corner_radius=10)
+    voice_section.pack(fill="x", padx=8, pady=(0, 8))
+    ctk.CTkLabel(voice_section, text="Voice & TTS Engine", font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=16, pady=(12, 0))
+    voice_row = ctk.CTkFrame(voice_section, fg_color="transparent")
+    voice_row.pack(fill="x", padx=16, pady=(8, 6))
+    ctk.CTkLabel(voice_row, text="Voice", text_color="#888").pack(side="left")
+    voice_menu = ctk.CTkOptionMenu(voice_row, variable=voice_var, values=voice_choices, width=260, height=32)
+    voice_menu.pack(side="left", padx=(8, 8))
+    ctk.CTkButton(voice_row, text="Test voice", command=test_selected_voice, width=110, height=32, fg_color="#444", hover_color="#555").pack(side="left")
+    pitch_row = ctk.CTkFrame(voice_section, fg_color="transparent")
+    pitch_row.pack(fill="x", padx=16, pady=(2, 6))
+    ctk.CTkLabel(pitch_row, text="Pitch", text_color="#888", width=80).pack(side="left")
+    ctk.CTkEntry(pitch_row, textvariable=pitch_var, width=120, height=30).pack(side="left", padx=(8, 12))
+    ctk.CTkLabel(pitch_row, text="Hz / semitone", text_color="#666").pack(side="left")
+    rate_row = ctk.CTkFrame(voice_section, fg_color="transparent")
+    rate_row.pack(fill="x", padx=16, pady=(2, 10))
+    ctk.CTkLabel(rate_row, text="Rate", text_color="#888", width=80).pack(side="left")
+    ctk.CTkEntry(rate_row, textvariable=rate_var, width=120, height=30).pack(side="left", padx=(8, 12))
+    ctk.CTkLabel(rate_row, text="%", text_color="#666").pack(side="left")
+    ctk.CTkLabel(voice_section, text="The selected voice language is used to auto-match the spoken-language target before generating TTS.", text_color="#666", justify="left", wraplength=560).pack(anchor="w", padx=16, pady=(0, 12))
+
+    timezone_section = ctk.CTkFrame(config_scroll, corner_radius=10)
+    timezone_section.pack(fill="x", padx=8, pady=(0, 12))
+    ctk.CTkLabel(timezone_section, text="Timezone & Multi-Mode Manager", font=("Segoe UI", 14, "bold")).pack(anchor="w", padx=16, pady=(12, 0))
+
+    tz_row = ctk.CTkFrame(timezone_section, fg_color="transparent")
+    tz_row.pack(fill="x", padx=16, pady=(8, 6))
+    ctk.CTkLabel(tz_row, text="Timezone", text_color="#888").pack(anchor="w")
+    selected_tz_label = ctk.CTkLabel(tz_row, textvariable=timezone_var, text_color="#ddd", font=("Segoe UI", 11, "bold"), anchor="w")
+    selected_tz_label.pack(anchor="w", pady=(4, 0))
+
+    timezone_list = ctk.CTkScrollableFrame(timezone_section, height=220, fg_color="#201F2A")
+    timezone_list.pack(fill="x", padx=16, pady=(0, 10))
+
+    def update_timezone_selection(value):
+        timezone_var.set(value)
+        for child in timezone_list.winfo_children():
+            if hasattr(child, "cget"):
+                try:
+                    if child.cget("text") == value:
+                        child.configure(fg_color="#4A4D8A", hover_color="#5B5FA8")
+                    else:
+                        child.configure(fg_color="#2B2F3F", hover_color="#3B415D")
+                except Exception:
+                    pass
+
+    for tz_name in timezone_choices:
+        tz_btn = ctk.CTkButton(
+            timezone_list,
+            text=tz_name,
+            command=lambda value=tz_name: update_timezone_selection(value),
+            width=300,
+            height=32,
+            fg_color="#2B2F3F",
+            hover_color="#3B415D",
+            corner_radius=8,
+        )
+        tz_btn.pack(fill="x", pady=2)
+        if tz_name == timezone_var.get():
+            tz_btn.configure(fg_color="#4A4D8A", hover_color="#5B5FA8")
+
+    ctk.CTkLabel(timezone_section, text="Blank hours leave a mode inactive.", text_color="#666").pack(anchor="w", padx=16, pady=(0, 8))
+
+    mode_container = ctk.CTkFrame(timezone_section, fg_color="transparent")
+    mode_container.pack(fill="x", padx=16, pady=(0, 10))
+    mode_widgets = []
+
+    def add_mode_card(mode_data=None):
+        if mode_data is None:
+            mode_data = {"name": "Mode", "start": "", "end": "", "enabled": True, "blacklist": ""}
+        frame = ctk.CTkFrame(mode_container, corner_radius=8)
+        frame.pack(fill="x", pady=4)
+        widgets = {
+            "frame": frame,
+            "name": ctk.StringVar(value=mode_data.get("name", "Mode")),
+            "start": ctk.StringVar(value=mode_data.get("start", "")),
+            "end": ctk.StringVar(value=mode_data.get("end", "")),
+            "enabled": ctk.BooleanVar(value=bool(mode_data.get("enabled", True))),
+            "blacklist": ctk.StringVar(value=mode_data.get("blacklist", "") if isinstance(mode_data.get("blacklist"), str) else ", ".join(mode_data.get("blacklist", []))),
+        }
+        ctk.CTkLabel(frame, text="Name", text_color="#888").pack(anchor="w", padx=12, pady=(10, 0))
+        ctk.CTkEntry(frame, textvariable=widgets["name"]).pack(fill="x", padx=12)
+        hours = ctk.CTkFrame(frame, fg_color="transparent")
+        hours.pack(fill="x", padx=12, pady=(8, 0))
+        ctk.CTkLabel(hours, text="Active Hours", text_color="#888").pack(side="left")
+        ctk.CTkEntry(hours, textvariable=widgets["start"], width=90, placeholder_text="HH:MM").pack(side="left", padx=(8, 6))
+        ctk.CTkLabel(hours, text="-", text_color="#888").pack(side="left")
+        ctk.CTkEntry(hours, textvariable=widgets["end"], width=90, placeholder_text="HH:MM").pack(side="left", padx=(6, 12))
+        ctk.CTkCheckBox(frame, text="Enable Focus Guard", variable=widgets["enabled"]).pack(anchor="w", padx=12, pady=(8, 0))
+        ctk.CTkLabel(frame, text="Blocked window titles", text_color="#888").pack(anchor="w", padx=12, pady=(8, 0))
+        ctk.CTkEntry(frame, textvariable=widgets["blacklist"]).pack(fill="x", padx=12, pady=(0, 12))
+        mode_widgets.append(widgets)
+        return widgets
+
+    existing_modes = config_default.get("modes") or []
+    if existing_modes:
+        for mode_data in existing_modes:
+            add_mode_card(mode_data)
+    else:
+        add_mode_card({"name": "Work", "start": "08:00", "end": "17:00", "enabled": True, "blacklist": "Genshin Impact, Steam"})
+
+    ctk.CTkButton(timezone_section, text="+ Add mode", command=lambda: add_mode_card(), width=130, height=32, fg_color="#444", hover_color="#555").pack(anchor="w", padx=16, pady=(0, 12))
+
     # ═══════════ Bottom bar buttons (added to pre-packed footer) ═══════════
     ctk.CTkButton(bottom, text="+ Add application", command=on_add, width=160, height=38,
                    fg_color="#444", hover_color="#555").pack(side="left", padx=(0, 8))
 
     def build_save_data():
         save_current_to_profile()
+        config_payload = {
+            "display_name": display_name_var.get().strip() or "Vinn",
+            "dialogs": {key: value.get().strip() for key, value in dialog_vars.items()},
+            "avatar_states": {state: value.get().strip() for state, value in avatar_state_vars.items()},
+            "tts": {
+                "voice": voice_var.get().strip() or "en-US-MichelleNeural",
+                "pitch": pitch_var.get().strip() or "+18Hz",
+                "rate": rate_var.get().strip() or "-5%",
+            },
+            "timezone": timezone_var.get().strip() or "Asia/Jakarta",
+            "modes": [
+                {
+                    "name": item["name"].get().strip() or "Mode",
+                    "start": item["start"].get().strip(),
+                    "end": item["end"].get().strip(),
+                    "enabled": bool(item["enabled"].get()),
+                    "blacklist": [b.strip() for b in item["blacklist"].get().split(",") if b.strip()],
+                }
+                for item in mode_widgets
+            ],
+        }
         return {
             "czulosc_klasniecia": czulosc.get(),
             "hotkey": hotkey_var.get(),
@@ -856,6 +1134,7 @@ def main():
             "jezyk_mowy": voice_lang_var.get(),
             "profil_aktywny": prof_var.get(),
             "profile": current_profile["data"],
+            "configuration": merge_config(cfg.get("configuration", {}), config_payload),
         }
 
     def save():
@@ -879,12 +1158,12 @@ def main():
 
         data = merge_config(cfg, data)
         data["work_hours"] = merge_config(cfg.get("work_hours", {}), {
-            "start": work_start_var.get().strip() or "08:00",
-            "end": work_end_var.get().strip() or "17:00",
+            "start": "08:00",
+            "end": "17:00",
         })
         data["focus_guard"] = merge_config(cfg.get("focus_guard", {}), {
-            "enabled": focus_var.get(),
-            "blacklist": [item.strip() for item in blacklist_var.get().split(",") if item.strip()],
+            "enabled": False,
+            "blacklist": [],
         })
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
