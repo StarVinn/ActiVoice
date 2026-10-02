@@ -63,6 +63,50 @@ RELAX_START_DIALOGS = [
     "Great hard work today, Vinn! Time to unwind and take it easy for now!",
 ]
 
+DEFAULT_CONFIG_DIALOGS = {
+    "startup": "Grace is online, sir. {name} mode is active and I am standing by.",
+    "workspace_launch": "Launching your workspace now, {name}!",
+    "lock": "Locking your workspace now, {name}.",
+    "shutdown_request": "Shutdown request detected. Please say the command word.",
+    "shutdown_confirmed": "Confirmed. Turning off your PC now. Have a good rest, {name}!",
+    "shutdown_cancelled": "Shutdown cancelled. Keeping your PC running, {name}!",
+    "exit": "Goodbye {name}, see you!",
+    "focus_warning": "Hey {name}, shouldn't you be coding right now? Please close it.",
+    "focus_closed": "Time's up, {name}! I closed it for you.",
+    "low_battery": "Low battery warning. Battery is at {battery} percent. Please connect the charger soon.",
+    "critical_battery": "Critical battery warning. Battery is at {battery} percent. Shutdown will begin shortly.",
+    "mode_work": "Work mode is active, {name}.",
+    "mode_relax": "Relax mode is active, {name}.",
+}
+
+
+def get_display_name(config):
+    if not isinstance(config, dict):
+        return "Vinn"
+    cfg = config.get("configuration", {})
+    if not isinstance(cfg, dict):
+        return "Vinn"
+    name = str(cfg.get("display_name", "Vinn") or "Vinn").strip()
+    return name or "Vinn"
+
+
+def get_dialog_text(config, key, fallback, **kwargs):
+    template = fallback
+    if isinstance(config, dict):
+        cfg = config.get("configuration", {})
+        if isinstance(cfg, dict):
+            dialogs = cfg.get("dialogs", {})
+            if isinstance(dialogs, dict):
+                value = dialogs.get(key)
+                if isinstance(value, str) and value.strip():
+                    template = value.strip()
+    safe = {"name": get_display_name(config), "battery": "unknown", "cpu": "unknown", "ram": "unknown"}
+    safe.update(kwargs)
+    try:
+        return template.format(**safe)
+    except Exception:
+        return fallback.format(**safe)
+
 
 def execute_native_media_command(action):
     """Send one lightweight native Windows media-key press and release."""
