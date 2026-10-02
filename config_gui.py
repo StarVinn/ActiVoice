@@ -41,7 +41,7 @@ DEFAULT_AVATAR_STATE_MAP = {
 }
 
 DEFAULT_CONFIGURATION = {
-    "display_name": "Vinn",
+    "display_name": "User",
     "dialogs": DEFAULT_DIALOGS,
     "avatar_states": DEFAULT_AVATAR_STATE_MAP,
     "tts": {
@@ -420,6 +420,8 @@ def get_configuration_block(cfg):
 
 def default_voice_candidates():
     return [
+        "ja-JP-KeitaNeural",
+        "ja-JP-NanamiNeural",
         "en-US-MichelleNeural",
         "en-US-AriaNeural",
         "en-US-GuyNeural",
