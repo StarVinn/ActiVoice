@@ -117,7 +117,7 @@ class GraceHUD(QWidget):
     self.speech_panel = QFrame(self)
     self.speech_panel.setObjectName("speechPanel")
     self.speech_panel.setStyleSheet(
-        "QFrame#speechPanel { background: #2A2638; border-radius: 14px; }"
+      "QFrame#speechPanel { background: #111827; border: 2px solid #60A5FA; border-radius: 14px; }"
     )
     self.speech_panel.setSizePolicy(
         QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
@@ -131,7 +131,7 @@ class GraceHUD(QWidget):
     self.bubble = QLabel(self.speech_panel)
     self.bubble.setObjectName("speechText")
     self.bubble.setStyleSheet(
-        "QLabel#speechText { color: #F5F3FF; background: transparent; }"
+      "QLabel#speechText { color: #FFFFFF; background: transparent; font-weight: 600; }"
     )
     self.bubble.setWordWrap(True)
     self.bubble.setAlignment(
