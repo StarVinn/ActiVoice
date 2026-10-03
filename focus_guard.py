@@ -17,7 +17,12 @@ try:
 except ImportError:
     win32process = None
 
-DEFAULT_BLACKLIST = ["Genshin Impact", "YouTube", "TikTok", "Steam", "Netflix"]
+DEFAULT_BLACKLIST = ["genshinimpact.exe", "steam.exe", "robloxplayerbeta.exe"]
+LEGACY_PROCESS_NAMES = {
+    "genshin impact": "genshinimpact.exe",
+    "valorant": "valorant-win64-shipping.exe",
+    "roblox": "robloxplayerbeta.exe",
+}
 
 
 def vinn_mode_now(start="08:00", end="17:00"):
@@ -35,7 +40,11 @@ def focus_guard_loop(
     interval=30,
     enabled_event=None,
 ):
-    blocked = [item.lower() for item in (blacklist or DEFAULT_BLACKLIST)]
+    blocked = set()
+    for item in DEFAULT_BLACKLIST if blacklist is None else blacklist:
+        normalized = str(item).strip().lower()
+        if normalized:
+            blocked.add(LEGACY_PROCESS_NAMES.get(normalized, normalized))
     detected_at = {}
     while not stop_event.wait(interval):
         if enabled_event is not None and not enabled_event.is_set():
@@ -49,10 +58,6 @@ def focus_guard_loop(
                     continue
                 if hasattr(window, "isMinimized") and window.isMinimized:
                     continue
-                title = (window.title or "").lower()
-                if not title or not any(item in title for item in blocked):
-                    continue
-
                 pid = None
                 if win32process and getattr(window, "_hWnd", None):
                     try:
@@ -60,6 +65,15 @@ def focus_guard_loop(
                     except Exception:
                         pid = None
                 if not pid:
+                    continue
+
+                process_name = ""
+                if psutil:
+                    try:
+                        process_name = psutil.Process(pid).name().lower()
+                    except (psutil.Error, OSError):
+                        process_name = ""
+                if not process_name or process_name not in blocked:
                     continue
 
                 active_pids.add(pid)

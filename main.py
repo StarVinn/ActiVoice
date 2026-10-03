@@ -200,8 +200,52 @@ def load_config():
 def active_mode(config):
     rules = config.get("work_hours", {})
     start, end = rules.get("start", "08:00"), rules.get("end", "17:00")
-    now = datetime.now(ZoneInfo("Asia/Jakarta")).time()
+    timezone = config.get("configuration", {}).get("timezone", "Asia/Jakarta")
+    now = datetime.now(ZoneInfo(timezone)).time()
     return "VINN MODE" if clock_time.fromisoformat(start) <= now <= clock_time.fromisoformat(end) else "RELAX MODE"
+
+
+def get_focus_guard_settings(config):
+    defaults = {
+        "enabled": True,
+        "blacklist": None,
+        "start": config.get("work_hours", {}).get("start", "08:00"),
+        "end": config.get("work_hours", {}).get("end", "17:00"),
+    }
+    configuration = config.get("configuration", {})
+    modes = configuration.get("modes", []) if isinstance(configuration, dict) else []
+    if not isinstance(modes, list) or not modes:
+        legacy = config.get("focus_guard", {})
+        if isinstance(legacy, dict):
+            defaults.update({key: legacy[key] for key in defaults if key in legacy})
+        return defaults
+
+    timezone_name = configuration.get("timezone", "Asia/Jakarta")
+    now = datetime.now(ZoneInfo(timezone_name)).time()
+    selected = None
+    for mode in modes:
+        if not isinstance(mode, dict) or not mode.get("enabled", True):
+            continue
+        start = mode.get("start", "")
+        end = mode.get("end", "")
+        if not start or not end:
+            continue
+        try:
+            if clock_time.fromisoformat(start) <= now <= clock_time.fromisoformat(end):
+                selected = mode
+                break
+        except ValueError:
+            continue
+    if selected is None:
+        selected = next((mode for mode in modes if isinstance(mode, dict) and mode.get("enabled", True)), None)
+    if selected:
+        defaults.update({
+            "enabled": bool(selected.get("enabled", True)),
+            "blacklist": selected.get("blacklist", []),
+            "start": selected.get("start") or defaults["start"],
+            "end": selected.get("end") or defaults["end"],
+        })
+    return defaults
 
 
 def system_status_message():
@@ -308,7 +352,7 @@ def main():
 
     threading.Thread(target=start_clap_listener, daemon=True, name="standby-clap").start()
 
-    focus = config.get("focus_guard", {})
+    focus = get_focus_guard_settings(config)
     focus_enabled = threading.Event()
     if focus.get("enabled", True):
         focus_enabled.set()

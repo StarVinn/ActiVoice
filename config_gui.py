@@ -53,6 +53,17 @@ DEFAULT_CONFIGURATION = {
     "modes": [],
 }
 
+GAME_KEYWORDS = {
+    "game", "games", "genshin", "valorant", "roblox", "steam", "epic",
+    "riot", "league", "minecraft", "fortnite", "elden", "dota", "csgo",
+    "counter-strike", "overwatch", "apex", "warframe", "pubg", "playnite",
+}
+
+
+def is_game_application(app_name, app_path):
+    haystack = f"{app_name} {os.path.basename(app_path)}".lower()
+    return any(keyword in haystack for keyword in GAME_KEYWORDS)
+
 
 def merge_config(existing, updates):
     """Merge GUI-owned values without discarding unknown configuration keys."""
@@ -1064,16 +1075,20 @@ def main():
 
     def add_mode_card(mode_data=None):
         if mode_data is None:
-            mode_data = {"name": "Mode", "start": "", "end": "", "enabled": True, "blacklist": ""}
+            mode_data = {"name": "Mode", "start": "", "end": "", "enabled": True, "blacklist": []}
         frame = ctk.CTkFrame(mode_container, corner_radius=8)
         frame.pack(fill="x", pady=4)
+        selected_blacklist = mode_data.get("blacklist", [])
+        if isinstance(selected_blacklist, str):
+            selected_blacklist = [item.strip() for item in selected_blacklist.split(",") if item.strip()]
+        selected_blacklist = {str(item).lower() for item in selected_blacklist}
         widgets = {
             "frame": frame,
             "name": ctk.StringVar(value=mode_data.get("name", "Mode")),
             "start": ctk.StringVar(value=mode_data.get("start", "")),
             "end": ctk.StringVar(value=mode_data.get("end", "")),
             "enabled": ctk.BooleanVar(value=bool(mode_data.get("enabled", True))),
-            "blacklist": ctk.StringVar(value=mode_data.get("blacklist", "") if isinstance(mode_data.get("blacklist"), str) else ", ".join(mode_data.get("blacklist", []))),
+            "blacklist": selected_blacklist,
         }
         ctk.CTkLabel(frame, text="Name", text_color="#888").pack(anchor="w", padx=12, pady=(10, 0))
         ctk.CTkEntry(frame, textvariable=widgets["name"]).pack(fill="x", padx=12)
@@ -1084,8 +1099,48 @@ def main():
         ctk.CTkLabel(hours, text="-", text_color="#888").pack(side="left")
         ctk.CTkEntry(hours, textvariable=widgets["end"], width=90, placeholder_text="HH:MM").pack(side="left", padx=(6, 12))
         ctk.CTkCheckBox(frame, text="Enable Focus Guard", variable=widgets["enabled"]).pack(anchor="w", padx=12, pady=(8, 0))
-        ctk.CTkLabel(frame, text="Blocked window titles", text_color="#888").pack(anchor="w", padx=12, pady=(8, 0))
-        ctk.CTkEntry(frame, textvariable=widgets["blacklist"]).pack(fill="x", padx=12, pady=(0, 12))
+        ctk.CTkLabel(frame, text="Blocked applications (.exe)", text_color="#888").pack(anchor="w", padx=12, pady=(8, 0))
+        ctk.CTkLabel(frame, text="Select executable files to block during this mode.", text_color="#666").pack(anchor="w", padx=12, pady=(2, 4))
+        blocked_apps = ctk.CTkScrollableFrame(frame, height=150, fg_color="#201F2A")
+        blocked_apps.pack(fill="x", padx=12, pady=(0, 12))
+        widgets["blacklist_vars"] = []
+        sorted_apps = sorted(installed, key=lambda item: item["name"].lower())
+        game_apps = [app for app in sorted_apps if is_game_application(app["name"], app["exe"])]
+        other_apps = [app for app in sorted_apps if app not in game_apps]
+
+        def add_application_group(title, applications):
+            if not applications:
+                return
+            ctk.CTkLabel(
+                blocked_apps,
+                text=title,
+                text_color="#60A5FA" if title == "Games" else "#A7A7B3",
+                font=("Segoe UI", 11, "bold"),
+            ).pack(anchor="w", padx=8, pady=(8, 4))
+            for app in applications:
+                app_name = app["name"]
+                app_path = app["exe"]
+                executable = os.path.basename(app_path).lower()
+                if not executable.endswith(".exe"):
+                    continue
+                selected = ctk.BooleanVar(
+                    value=(
+                        executable in selected_blacklist
+                        or app_path.lower() in selected_blacklist
+                        or app_name.lower() in selected_blacklist
+                    )
+                )
+                ctk.CTkCheckBox(
+                    blocked_apps,
+                    text=f"{app_name} ({executable})",
+                    variable=selected,
+                    onvalue=True,
+                    offvalue=False,
+                ).pack(anchor="w", padx=8, pady=2)
+                widgets["blacklist_vars"].append((executable, selected))
+
+        add_application_group("Games", game_apps)
+        add_application_group("Other applications", other_apps)
         mode_widgets.append(widgets)
         return widgets
 
@@ -1094,7 +1149,7 @@ def main():
         for mode_data in existing_modes:
             add_mode_card(mode_data)
     else:
-        add_mode_card({"name": "Work", "start": "08:00", "end": "17:00", "enabled": True, "blacklist": "Genshin Impact, Steam"})
+        add_mode_card({"name": "Work", "start": "08:00", "end": "17:00", "enabled": True, "blacklist": []})
 
     ctk.CTkButton(timezone_section, text="+ Add mode", command=lambda: add_mode_card(), width=130, height=32, fg_color="#444", hover_color="#555").pack(anchor="w", padx=16, pady=(0, 12))
 
@@ -1120,7 +1175,7 @@ def main():
                     "start": item["start"].get().strip(),
                     "end": item["end"].get().strip(),
                     "enabled": bool(item["enabled"].get()),
-                    "blacklist": [b.strip() for b in item["blacklist"].get().split(",") if b.strip()],
+                    "blacklist": [executable for executable, selected in item["blacklist_vars"] if selected.get()],
                 }
                 for item in mode_widgets
             ],
