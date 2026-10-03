@@ -2,7 +2,7 @@
 
 import ctypes, ctypes.wintypes, json, os, shutil, subprocess, sys, winreg
 import customtkinter as ctk
-from tkinter import filedialog, messagebox
+from tkinter import PhotoImage, filedialog, messagebox
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -501,6 +501,10 @@ def main():
     root.title("ActiVoice Configuration")
     root.geometry("740x680")
     root.minsize(680, 450)
+    icon_path = os.path.join(BASE_DIR, "assets", "tray_icon.png")
+    if os.path.exists(icon_path):
+        root._app_icon = PhotoImage(file=icon_path)
+        root.iconphoto(True, root._app_icon)
 
     # ── Header ──
     header = ctk.CTkFrame(root, fg_color="transparent")
@@ -1244,6 +1248,9 @@ def main():
                    fg_color="#444", hover_color="#555").pack(side="right", padx=(8, 0))
     ctk.CTkButton(bottom, text="Save", command=save, width=120, height=38).pack(side="right")
 
-    root.mainloop()
+    try:
+        root.mainloop()
+    except KeyboardInterrupt:
+        root.destroy()
 
 if __name__ == "__main__": main()
