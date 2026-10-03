@@ -108,6 +108,25 @@ def get_dialog_text(config, key, fallback, **kwargs):
         return fallback.format(**safe)
 
 
+def get_runtime_voice_settings(config):
+    defaults = {"voice_name": "en-US-MichelleNeural", "pitch": "+18Hz", "rate": "-5%"}
+    if not isinstance(config, dict):
+        return defaults
+
+    cfg = config.get("configuration", {})
+    if not isinstance(cfg, dict):
+        return defaults
+
+    tts = cfg.get("tts", {})
+    if not isinstance(tts, dict):
+        return defaults
+
+    voice_name = str(tts.get("voice") or defaults["voice_name"]).strip() or defaults["voice_name"]
+    pitch = str(tts.get("pitch") or defaults["pitch"]).strip() or defaults["pitch"]
+    rate = str(tts.get("rate") or defaults["rate"]).strip() or defaults["rate"]
+    return {"voice_name": voice_name, "pitch": pitch, "rate": rate}
+
+
 def execute_native_media_command(action):
     """Send one lightweight native Windows media-key press and release."""
     virtual_key = {
@@ -229,7 +248,7 @@ def main():
     mode = active_mode(config)
     startup_greeting = random.choice(STARTUP_GREETINGS).replace("[ACTIVE_MODE]", mode)
     hud.set_state("IDLE", startup_greeting, 8)
-    speak(startup_greeting, "IDLE", hud)
+    speak(startup_greeting, "IDLE", hud, **get_runtime_voice_settings(config))
 
     def launch_workspace():
         """Start the existing workspace launcher after standby activation."""
@@ -241,7 +260,7 @@ def main():
                 message = "Low battery, skipping workspace launch to save power, Vinn!"
                 print(f"[POWER] {message}", flush=True)
                 hud.set_state("SLEEP", message, 8)
-                speak(message, hud=hud)
+                speak(message, hud=hud, **get_runtime_voice_settings(config))
                 workspace_launching = False
                 return
 
@@ -270,7 +289,7 @@ def main():
             except Exception:
                 pass
         print(f"[SYSTEM] Workspace activation: {source}", flush=True)
-        speak("Launching your workspace now, Vinn!", hud=hud)
+        speak("Launching your workspace now, Vinn!", hud=hud, **get_runtime_voice_settings(config))
         thread = threading.Thread(target=launch_workspace, daemon=True, name="workspace-launch")
         thread.start()
 
@@ -312,11 +331,11 @@ def main():
             if current_mode == "VINN MODE":
                 focus_enabled.set()
                 hud.set_state("WORKING", "VINN MODE active.", 8)
-                speak(random.choice(WORK_START_DIALOGS), "WORKING", hud)
+                speak(random.choice(WORK_START_DIALOGS), "WORKING", hud, **get_runtime_voice_settings(config))
             else:
                 focus_enabled.clear()
                 hud.set_state("IDLE", "RELAX MODE active.", 8)
-                speak(random.choice(RELAX_START_DIALOGS), "IDLE", hud)
+                speak(random.choice(RELAX_START_DIALOGS), "IDLE", hud, **get_runtime_voice_settings(config))
 
     threading.Thread(target=mode_transition_loop, daemon=True, name="mode-scheduler").start()
 
@@ -342,7 +361,7 @@ def main():
         if farewell_played.is_set():
             return
         farewell_played.set()
-        speak(random.choice(EXIT_RESPONSES), hud=hud, wait=True)
+        speak(random.choice(EXIT_RESPONSES), hud=hud, wait=True, **get_runtime_voice_settings(config))
 
     def request_shutdown_confirmation(source="voice"):
         with shutdown_lock:
@@ -354,7 +373,7 @@ def main():
         )
         print(f"[SHUTDOWN] Awaiting confirmation from {source}.", flush=True)
         hud.set_state("SHUTDOWN", message, None)
-        speak(message, "SHUTDOWN", hud)
+        speak(message, "SHUTDOWN", hud, **get_runtime_voice_settings(config))
 
     def cancel_shutdown_confirmation(reason="cancelled"):
         with shutdown_lock:
@@ -362,7 +381,7 @@ def main():
         message = "Shutdown cancelled. Keeping your PC running, Vinn!"
         print(f"[SHUTDOWN] {reason}", flush=True)
         hud.set_state("ANGRY", message, 5)
-        speak(message, "ANGRY", hud)
+        speak(message, "ANGRY", hud, **get_runtime_voice_settings(config))
         hud.set_state("IDLE")
 
     def confirm_shutdown():
@@ -373,7 +392,7 @@ def main():
         message = "Confirmed. Turning off your PC now. Have a good rest, Vinn!"
         print("[SHUTDOWN] Confirmation accepted.", flush=True)
         hud.set_state("SHUTDOWN", message, 5)
-        speak(message, "SHUTDOWN", hud, wait=True)
+        speak(message, "SHUTDOWN", hud, wait=True, **get_runtime_voice_settings(config))
         stop_event.set()
         execute_pc_shutdown()
 
@@ -450,7 +469,7 @@ def main():
                 return
             if matched_command == "status":
                 print("[EXECUTE] System Status", flush=True)
-                speak(system_status_message(), hud=hud)
+                speak(system_status_message(), hud=hud, **get_runtime_voice_settings(config))
             elif matched_command == "focus_enable":
                 focus_enabled.set()
                 print("[EXECUTE] Enable Focus Guard", flush=True)
@@ -462,18 +481,18 @@ def main():
             elif matched_command == "pause":
                 print("[EXECUTE] Pause Music", flush=True)
                 execute_native_media_command("pause")
-                speak(random.choice(MEDIA_RESPONSES), hud=hud)
+                speak(random.choice(MEDIA_RESPONSES), hud=hud, **get_runtime_voice_settings(config))
                 return
             elif matched_command in {"play", "next"}:
                 print(f"[EXECUTE] {matched_command.title()} Music", flush=True)
                 execute_native_media_command(matched_command)
-                speak(random.choice(MEDIA_RESPONSES), hud=hud)
+                speak(random.choice(MEDIA_RESPONSES), hud=hud, **get_runtime_voice_settings(config))
                 return
             elif matched_command == "lock":
                 print("[EXECUTE] Lock Workspace", flush=True)
                 success = execute_voice_command(matched_command)
                 if success:
-                    speak(random.choice(LOCK_RESPONSES), hud=hud)
+                    speak(random.choice(LOCK_RESPONSES), hud=hud, **get_runtime_voice_settings(config))
             else:
                 print("[SYSTEM] Shutting down launcher", flush=True)
                 play_exit_farewell()
@@ -525,15 +544,15 @@ def main():
                 try:
                     answer = gemini.generate(transcript)
                     hud.set_state("THINKING", "Gemini is replying...", None)
-                    speak(answer, "IDLE", hud)
+                    speak(answer, "IDLE", hud, **get_runtime_voice_settings(config))
                 except GeminiError as exc:
                     print(f"[GEMINI] {exc}", flush=True)
                     hud.set_state("SAD", "Gemini is unavailable right now, sir.", 5)
-                    speak("Gemini is unavailable right now, sir.", "SAD", hud)
+                    speak("Gemini is unavailable right now, sir.", "SAD", hud, **get_runtime_voice_settings(config))
             else:
                 message = "Gemini is not configured, sir. Add GEMINI_API_KEY to .env first."
                 hud.set_state("SAD", message, 5)
-                speak(message, "SAD", hud)
+                speak(message, "SAD", hud, **get_runtime_voice_settings(config))
         except sr.WaitTimeoutError:
             hud.set_state("IDLE", "I didn't hear anything, sir.", 3)
         except sr.UnknownValueError:
