@@ -29,39 +29,8 @@ from global_hotkey import GlobalPushToTalk
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(BASE_DIR, "workspace-config.json")
-MEDIA_RESPONSES = ["Got it, Sir!", "On it!", "Sure thing!", "Consider it done!", "Right away, Sir!"]
-LOCK_RESPONSES = [
-    "Locking your workspace now.",
-    "Securing your setup, catch you later!",
-    "Locking up. Take a quick break, Sir!",
-    "Workspace secured!",
-]
-EXIT_RESPONSES = [
-    "Goodbye Vinn, see you!",
-    "Shutting down, have a good rest, Vinn!",
-    "Closing launcher now, catch you later!",
-]
-WORK_START_DIALOGS = [
-    "Vinn, work hours have started! I'm enabling Focus Guard now, let's focus on task first!",
-    "Let's go Vinn! Work mode is active. I'll be keeping an eye on game apps for now!",
-    "Time to get back in the zone, Vinn! Keep away from distractions so we can finish early!",
-]
-
-STARTUP_GREETINGS = [
-    "[ACTIVE_MODE] is active. Grace is ready, sir!",
-    "Grace is online, sir. [ACTIVE_MODE] is active, and I am standing by.",
-    "System ready. [ACTIVE_MODE] is active. What shall we do first, sir?",
-    "Welcome back, sir. [ACTIVE_MODE] is active, and Grace is ready for your commands.",
-]
-
 SHUTDOWN_CONFIRMATION_KEYWORDS = {"confirm", "yes", "do it"}
 SHUTDOWN_CANCEL_KEYWORDS = {"cancel", "stop", "never mind", "nevermind", "no"}
-
-RELAX_START_DIALOGS = [
-    "Work hours are done, Vinn! Disabling Focus Guard, enjoy your rest or go play some games!",
-    "Hooray, all done! Relax mode activated Vinn, feel free to play Genshin or listen to music now!",
-    "Great hard work today, Vinn! Time to unwind and take it easy for now!",
-]
 
 DEFAULT_CONFIG_DIALOGS = {
     "startup": "Grace is online, sir. {name} mode is active and I am standing by.",
@@ -106,6 +75,75 @@ def get_dialog_text(config, key, fallback, **kwargs):
         return template.format(**safe)
     except Exception:
         return fallback.format(**safe)
+
+
+def build_context_dialog(config, category, **context):
+    """Compose a varied dialog from the current user, mode, and action context."""
+    name = get_display_name(config)
+    mode = str(context.get("mode", "the current mode"))
+    action = str(context.get("action", "media")).replace("_", " ")
+
+    if category == "startup":
+        options = [
+            f"{mode} is active, {name}. Grace is ready and standing by.",
+            f"Grace is online, {name}. We are in {mode}.",
+            f"System ready. {mode} is active. What shall we do first, {name}?",
+        ]
+    elif category == "workspace_launch":
+        options = [
+            f"Launching your workspace now, {name}.",
+            f"Your workspace is coming online, {name}.",
+            f"Starting the {mode} workspace for you, {name}.",
+        ]
+    elif category == "media":
+        options = [
+            f"{action.title()} command complete, {name}.",
+            f"Your music is {action}, {name}.",
+            f"Done. Media action '{action}' is finished.",
+        ]
+    elif category == "lock":
+        options = [
+            f"Workspace secured, {name}.",
+            f"Everything is locked now, {name}.",
+            f"Your workspace is protected. Take care, {name}.",
+        ]
+    elif category == "exit":
+        options = [
+            f"Goodbye, {name}. See you next time.",
+            f"Launcher closing now, {name}. Have a good rest.",
+            f"Signing off. Take care, {name}.",
+        ]
+    elif category == "mode_work":
+        options = [
+            f"Work mode is active, {name}. Focus Guard is watching for distractions.",
+            f"Back to work, {name}. I will help keep this session focused.",
+            f"It is time to focus, {name}. Work mode is now active.",
+        ]
+    elif category == "mode_relax":
+        options = [
+            f"Work hours are done, {name}. Relax mode is active.",
+            f"Nice work today, {name}. You can switch to relax mode now.",
+            f"Relax mode is ready, {name}. Time to unwind.",
+        ]
+    elif category == "shutdown_request":
+        options = [
+            "Shutdown request detected. Please say confirm or cancel.",
+            f"I can shut down the PC now, {name}. Please confirm or cancel.",
+        ]
+    elif category == "shutdown_cancelled":
+        options = [
+            f"Shutdown cancelled, {name}. Your PC will keep running.",
+            f"Cancelled. Everything stays on, {name}.",
+        ]
+    elif category == "shutdown_confirmed":
+        options = [
+            f"Confirmed. Turning off your PC now. Rest well, {name}.",
+            f"Shutdown confirmed, {name}. Have a good rest.",
+        ]
+    else:
+        options = [f"Done, {name}."]
+
+    return random.choice(options)
 
 
 def get_runtime_voice_settings(config):
@@ -290,7 +328,7 @@ def main():
     clap_stream = {"value": None}
 
     mode = active_mode(config)
-    startup_greeting = random.choice(STARTUP_GREETINGS).replace("[ACTIVE_MODE]", mode)
+    startup_greeting = build_context_dialog(config, "startup", mode=mode)
     hud.set_state("IDLE", startup_greeting, 8)
     speak(startup_greeting, "IDLE", hud, **get_runtime_voice_settings(config))
 
@@ -301,7 +339,7 @@ def main():
             import workspace
 
             if workspace.should_skip_workspace_launch():
-                message = "Low battery, skipping workspace launch to save power, Vinn!"
+                message = f"Low battery, skipping workspace launch to save power, {get_display_name(config)}."
                 print(f"[POWER] {message}", flush=True)
                 hud.set_state("SLEEP", message, 8)
                 speak(message, hud=hud, **get_runtime_voice_settings(config))
@@ -333,7 +371,7 @@ def main():
             except Exception:
                 pass
         print(f"[SYSTEM] Workspace activation: {source}", flush=True)
-        speak("Launching your workspace now, Vinn!", hud=hud, **get_runtime_voice_settings(config))
+        speak(build_context_dialog(config, "workspace_launch", mode=mode), hud=hud, **get_runtime_voice_settings(config))
         thread = threading.Thread(target=launch_workspace, daemon=True, name="workspace-launch")
         thread.start()
 
@@ -375,11 +413,11 @@ def main():
             if current_mode == "VINN MODE":
                 focus_enabled.set()
                 hud.set_state("WORKING", "VINN MODE active.", 8)
-                speak(random.choice(WORK_START_DIALOGS), "WORKING", hud, **get_runtime_voice_settings(config))
+                speak(build_context_dialog(config, "mode_work", mode=current_mode), "WORKING", hud, **get_runtime_voice_settings(config))
             else:
                 focus_enabled.clear()
                 hud.set_state("IDLE", "RELAX MODE active.", 8)
-                speak(random.choice(RELAX_START_DIALOGS), "IDLE", hud, **get_runtime_voice_settings(config))
+                speak(build_context_dialog(config, "mode_relax", mode=current_mode), "IDLE", hud, **get_runtime_voice_settings(config))
 
     threading.Thread(target=mode_transition_loop, daemon=True, name="mode-scheduler").start()
 
@@ -405,16 +443,14 @@ def main():
         if farewell_played.is_set():
             return
         farewell_played.set()
-        speak(random.choice(EXIT_RESPONSES), hud=hud, wait=True, **get_runtime_voice_settings(config))
+        speak(build_context_dialog(config, "exit"), hud=hud, wait=True, **get_runtime_voice_settings(config))
 
     def request_shutdown_confirmation(source="voice"):
         with shutdown_lock:
             if shutdown_pending.is_set():
                 return
             shutdown_pending.set()
-        message = (
-            "Shutdown request detected. Please say the command word. "
-        )
+        message = build_context_dialog(config, "shutdown_request")
         print(f"[SHUTDOWN] Awaiting confirmation from {source}.", flush=True)
         hud.set_state("SHUTDOWN", message, None)
         speak(message, "SHUTDOWN", hud, **get_runtime_voice_settings(config))
@@ -422,7 +458,7 @@ def main():
     def cancel_shutdown_confirmation(reason="cancelled"):
         with shutdown_lock:
             shutdown_pending.clear()
-        message = "Shutdown cancelled. Keeping your PC running, Vinn!"
+        message = build_context_dialog(config, "shutdown_cancelled")
         print(f"[SHUTDOWN] {reason}", flush=True)
         hud.set_state("ANGRY", message, 5)
         speak(message, "ANGRY", hud, **get_runtime_voice_settings(config))
@@ -433,7 +469,7 @@ def main():
             if not shutdown_pending.is_set():
                 return
             shutdown_pending.clear()
-        message = "Confirmed. Turning off your PC now. Have a good rest, Vinn!"
+        message = build_context_dialog(config, "shutdown_confirmed")
         print("[SHUTDOWN] Confirmation accepted.", flush=True)
         hud.set_state("SHUTDOWN", message, 5)
         speak(message, "SHUTDOWN", hud, wait=True, **get_runtime_voice_settings(config))
@@ -525,18 +561,18 @@ def main():
             elif matched_command == "pause":
                 print("[EXECUTE] Pause Music", flush=True)
                 execute_native_media_command("pause")
-                speak(random.choice(MEDIA_RESPONSES), hud=hud, **get_runtime_voice_settings(config))
+                speak(build_context_dialog(config, "media", action="paused"), hud=hud, **get_runtime_voice_settings(config))
                 return
             elif matched_command in {"play", "next"}:
                 print(f"[EXECUTE] {matched_command.title()} Music", flush=True)
                 execute_native_media_command(matched_command)
-                speak(random.choice(MEDIA_RESPONSES), hud=hud, **get_runtime_voice_settings(config))
+                speak(build_context_dialog(config, "media", action=matched_command), hud=hud, **get_runtime_voice_settings(config))
                 return
             elif matched_command == "lock":
                 print("[EXECUTE] Lock Workspace", flush=True)
                 success = execute_voice_command(matched_command)
                 if success:
-                    speak(random.choice(LOCK_RESPONSES), hud=hud, **get_runtime_voice_settings(config))
+                    speak(build_context_dialog(config, "lock"), hud=hud, **get_runtime_voice_settings(config))
             else:
                 print("[SYSTEM] Shutting down launcher", flush=True)
                 play_exit_farewell()
