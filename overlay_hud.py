@@ -86,8 +86,8 @@ class GraceHUD(QWidget):
     self._current_image_path = ""
 
     # Dimensi dasar HUD yang lebih lega
-    self._hud_width = 640
-    self._hud_height = 380
+    self._hud_width = 420
+    self._hud_height = 260
     self._min_width = 420
     self._min_height = 260
     self._max_width = 1280
@@ -142,6 +142,18 @@ class GraceHUD(QWidget):
     )
     speech_layout.addWidget(self.bubble)
 
+    self.speech_arrow = QLabel(self)
+    self.speech_arrow.setObjectName("speechArrow")
+    self.speech_arrow.setText("▶")
+    self.speech_arrow.setAlignment(
+        Qt.AlignmentFlag.AlignCenter
+    )
+    self.speech_arrow.setStyleSheet(
+      "QLabel#speechArrow { color: #000000; background: transparent; font-size: 26px; font-weight: 700; margin: 0; padding: 0; }"
+    )
+    self.speech_arrow.setFixedWidth(18)
+    self.speech_arrow.setVisible(False)
+
     # Avatar Label
     self.image_label = QLabel(self)
     self.image_label.setAlignment(
@@ -154,6 +166,11 @@ class GraceHUD(QWidget):
 
     # Pembagian porsi layout: speech panel (3), image label (2)
     self.top_layout.addWidget(self.speech_panel, 3)
+    self.top_layout.addWidget(
+        self.speech_arrow,
+        0,
+        Qt.AlignmentFlag.AlignVCenter,
+    )
     self.top_layout.addWidget(
         self.image_label,
         2,
@@ -219,7 +236,9 @@ class GraceHUD(QWidget):
     width = max(self._min_width, self.width())
     height = max(self._min_height, self.height())
 
-    self.speech_panel.setVisible(bool(self.current_text))
+    speech_visible = bool(self.current_text)
+    self.speech_panel.setVisible(speech_visible)
+    self.speech_arrow.setVisible(speech_visible)
 
     base_size = max(10, min(18, int(min(width, height) / 25)))
     self._font.setPointSize(base_size)
